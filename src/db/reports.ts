@@ -1,0 +1,74 @@
+// 分析报告存档 CRUD
+import Database from 'better-sqlite3';
+import type { Direction } from '../types/analysis.js';
+
+export interface AnalysisReportRow {
+  id: number;
+  date: string;
+  horizon: string;
+  reportJson: string;
+  overallScore: number;
+  direction: Direction;
+  createdAt: string;
+}
+
+export class ReportsRepo {
+  constructor(private db: Database.Database) {}
+
+  insert(report: Omit<AnalysisReportRow, 'id' | 'createdAt'>): number {
+    const result = this.db.prepare(`
+      INSERT INTO analysis_reports (date, horizon, report_json, overall_score, direction)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(report.date, report.horizon, report.reportJson, report.overallScore, report.direction);
+    return Number(result.lastInsertRowid);
+  }
+
+  getRecent(days: number): AnalysisReportRow[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM analysis_reports
+      WHERE date >= date('now', '-' || ? || ' days')
+      ORDER BY date DESC
+    `).all(days) as Record<string, unknown>[];
+    return rows.map(mapRow);
+  }
+
+  getByScoreRange(minScore: number, maxScore: number, days?: number): AnalysisReportRow[] {
+    if (days) {
+      const rows = this.db.prepare(`
+        SELECT * FROM analysis_reports
+        WHERE overall_score >= ? AND overall_score < ?
+        AND date >= date('now', '-' || ? || ' days')
+        ORDER BY date ASC
+      `).all(minScore, maxScore, days) as Record<string, unknown>[];
+      return rows.map(mapRow);
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM analysis_reports
+      WHERE overall_score >= ? AND overall_score < ?
+      ORDER BY date ASC
+    `).all(minScore, maxScore) as Record<string, unknown>[];
+    return rows.map(mapRow);
+  }
+
+  getByDate(date: string): AnalysisReportRow | undefined {
+    const row = this.db.prepare(`SELECT * FROM analysis_reports WHERE date = ?`).get(date) as Record<string, unknown> | undefined;
+    return row ? mapRow(row) : undefined;
+  }
+
+  count(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) as cnt FROM analysis_reports`).get() as { cnt: number };
+    return row.cnt;
+  }
+}
+
+function mapRow(row: Record<string, unknown>): AnalysisReportRow {
+  return {
+    id: row.id as number,
+    date: row.date as string,
+    horizon: row.horizon as string,
+    reportJson: row.report_json as string,
+    overallScore: row.overall_score as number,
+    direction: row.direction as Direction,
+    createdAt: row.created_at as string,
+  };
+}

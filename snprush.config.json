@@ -1,0 +1,24 @@
+{
+  "llm": {
+    "provider": "opencode-go",
+    "models": {
+      "dataCollector": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "validator": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "technical": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "fundamental": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "sentiment": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "etf": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "rebuttal": { "providerID": "opencode-go", "modelID": "glm-5.1" },
+      "orchestrator": { "providerID": "opencode-go", "modelID": "glm-5.1" }
+    }
+  },
+  "search": {
+    "engines": {
+      "exa": { "enabled": false },
+      "opencode": { "enabled": true }
+    }
+  },
+  "database": { "path": "./data/snprush.db", "autoSnapshot": true },
+  "investment": { "horizon": "all", "platform": "any" },
+  "output": { "language": "zh-CN", "format": "table" }
+}
