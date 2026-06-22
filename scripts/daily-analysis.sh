@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SnpRush 每日分析 — 每天 11:30 ET 由 cron 触发
+# SnpRush 每日分析 — 每天 11:20 由 cron 触发
 # 生成 Markdown 报告到 docs/ 目录
 
 set -e

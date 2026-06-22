@@ -207,7 +207,7 @@ node dist/index.js analysis --md    # 生成 docs/snprush-analysis-YYYY-MM-DD.md
 
 ### 每日定时分析
 
-已在服务器设置每日 11:30 ET 自动执行分析并生成 Markdown 报告（cron）：
+已在服务器设置每日 11:20 自动执行分析并生成 Markdown 报告（cron）：
 
 ```bash
 crontab -l
@@ -293,7 +293,7 @@ snpNasdaqRush/
 │   └── snprush.db            # SQLite (自动创建)
 ├── docs/                     # Markdown 分析报告 (analysis --md)
 ├── scripts/
-│   └── daily-analysis.sh     # 每日定时分析脚本 (cron 11:30 ET)
+│   └── daily-analysis.sh     # 每日定时分析脚本 (cron 11:20)
 ├── logs/                     # 定时运行日志
 ├── server.cjs                # 报告展示 HTTP 服务 (端口 81)
 ├── snprush.config.json       # 配置文件 (LLM/搜索/数据库)
