@@ -169,7 +169,7 @@ function renderArticle(mdFilename, rawMarkdown) {
     <div id="content"></div>
     <div class="footer-meta">报告由 SnpRush 自动生成 · 仅供研究参考，不构成投资建议</div>
   </div>
-  <script>const md = \`${mdContent(rawMarkdown)}\`; document.getElementById('content').innerHTML = marked.parse(md);</script>
+  <script>const md = \`${esc(mdContent(rawMarkdown))}\`; document.getElementById('content').innerHTML = marked.parse(md);</script>
 </body>
 </html>`;
 }
