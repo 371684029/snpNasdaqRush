@@ -123,6 +123,9 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
   for (const point of rebuttal.bearPoints.slice(0, 3)) {
     console.log(`  · ${point.point} (${point.probability}%概率)`);
   }
+  for (const vul of rebuttal.bullVulnerabilities.slice(0, 2)) {
+    console.log(`  · 看多漏洞: ${vul.vulnerability}`);
+  }
   if (rebuttal.adjustedScore) {
     console.log(`  → 评分从初步${Math.round((technical.score + fundamental.score + sentiment.score) / 3)}分调整为${rebuttal.adjustedScore}分`);
   }
@@ -269,6 +272,14 @@ function renderReportMarkdown(report: SnpAnalysisReport, horizon: Horizon): stri
   for (const bp of rebuttal.bearPoints) {
     lines.push(`- **${bp.point}** (${bp.probability}%概率)`);
     lines.push(`  - 证据: ${bp.evidence}`);
+    lines.push(`  - 影响: ${bp.impact}`);
+  }
+  lines.push(``);
+  lines.push(`### 看多漏洞`);
+  for (const vul of rebuttal.bullVulnerabilities) {
+    lines.push(`- **${vul.vulnerability}**`);
+    if (vul.originalPoint) lines.push(`  - 原论点: ${vul.originalPoint}`);
+    if (vul.counterCondition) lines.push(`  - 反制条件: ${vul.counterCondition}`);
   }
   lines.push(``);
   if (rebuttal.adjustedScore) {
