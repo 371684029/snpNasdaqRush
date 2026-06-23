@@ -53,14 +53,14 @@ export interface SnpRushConfig {
 /** 默认配置 */
 export const DEFAULT_CONFIG: SnpRushConfig = {
   models: {
-    dataCollector: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    validator: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    technical: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    fundamental: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    sentiment: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    etf: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    rebuttal: { providerID: 'opencode-go', modelID: 'glm-5.1' },
-    orchestrator: { providerID: 'opencode-go', modelID: 'glm-5.1' },
+    dataCollector: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    validator: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    technical: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    fundamental: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    sentiment: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    etf: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    rebuttal: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    orchestrator: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
   },
   search: {
     tavilyApiKey: '',
