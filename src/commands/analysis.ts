@@ -29,21 +29,21 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   const validation = await validator.validate(marketData);
   console.log(`  ✅ 数据采集完成 (置信度: ${validation.overallConfidence}%)`);
 
-  // Step 2: 四维度分析（两批并行）
+  // Step 2: 四维度分析（串行执行，避免 LLM 并发争抢内存）
   console.log('  🧠 Step 2: 四维度分析...');
-  console.log('  📊 分析中: 技术面 & 基本面...');
-  const [technical, fundamental] = await Promise.all([
-    new TechnicalAgent().analyze(marketData),
-    new FundamentalAgent().analyze(marketData),
-  ]);
-  console.log(`  ✅ 技术面 ${technical.score}/100 | 基本面 ${fundamental.score}/100`);
+  console.log('  📊 分析中: 技术面...');
+  const technical = await new TechnicalAgent().analyze(marketData);
+  console.log(`  ✅ 技术面 ${technical.score}/100`);
+  console.log('  📊 分析中: 基本面...');
+  const fundamental = await new FundamentalAgent().analyze(marketData);
+  console.log(`  ✅ 基本面 ${fundamental.score}/100`);
 
-  console.log('  📊 分析中: 情绪面 & ETF/板块面...');
-  const [sentiment, etf] = await Promise.all([
-    new SentimentAgent().analyze(marketData),
-    new EtfFundAgent().analyze(marketData),
-  ]);
-  console.log(`  ✅ 情绪面 ${sentiment.score}/100 | ETF/板块面 ${etf.valuation.level}`);
+  console.log('  📊 分析中: 情绪面...');
+  const sentiment = await new SentimentAgent().analyze(marketData);
+  console.log(`  ✅ 情绪面 ${sentiment.score}/100`);
+  console.log('  📊 分析中: ETF/板块面...');
+  const etf = await new EtfFundAgent().analyze(marketData);
+  console.log(`  ✅ ETF/板块面 ${etf.valuation.level}`);
 
   // Step 2.5: 强制反驳
   console.log('  ⚔️ Step 2.5: 强制反驳...');
