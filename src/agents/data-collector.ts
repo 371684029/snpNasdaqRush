@@ -87,6 +87,12 @@ export class DataCollectorAgent extends BaseAgent {
 
     const searchResults = await this.searchRouter.searchBatch(searches, { numResults: 3 });
 
+    // 反捏造防线：若所有搜索均无结果，则不应让 LLM 凭空"提取"市场数据，直接中止。
+    const totalResults = Array.from(searchResults.values()).reduce((n, arr) => n + arr.length, 0);
+    if (totalResults === 0) {
+      throw new Error('搜索结果为空，无法采集市场数据。请配置 TAVILY_API_KEY 并确认网络连接；为避免编造数据，已中止本次采集。');
+    }
+
     const MAX_SNIPPET = 300;
     const searchContext = Array.from(searchResults.entries())
       .map(([query, results]) => {
