@@ -18,10 +18,12 @@ Non-obvious caveats for this environment:
   optional (DuckDuckGo fallback per README).
 - LLM-free commands that run fully offline: `history` (reads SQLite), and `calibrate` (reads
   archived reports). These auto-create `data/snprush.db` on first run.
-- Report viewer: `node server.cjs` serves `docs/*.md` on hardcoded **port 81** (privileged).
-  In this VM, run it as root with the absolute node path, e.g. `sudo /exec-daemon/node server.cjs`
-  (plain `sudo node ...` fails: node is not on root's PATH). It does NOT depend on the broken
-  TS build, so it runs even while the CLI is broken. Open http://localhost:81/ to browse the
-  committed report under `docs/`.
+- Report viewer: `node server.cjs` is a standalone dashboard (Hero + 概览 pills + 指数卡/SVG
+  sparkline + 报告列表) that reads `docs/*.md` and **read-only** opens the SQLite at
+  `data/snprush.db` (gracefully degrades to a reports-only view if the DB is missing/empty).
+  It does NOT depend on the TS build. Port is configurable via `PORT` env (default **81**,
+  privileged). On this VM prefer a non-privileged port to avoid sudo, e.g.
+  `PORT=8088 node server.cjs`; if you must use 81, run as root with the absolute node path
+  (`sudo /exec-daemon/node server.cjs`, since node is not on root's PATH).
 - There are no automated tests in this repo (no test script / no test files).
 - Copy `.env.example` to `.env` if you need to point at an opencode server / set a Tavily key.
