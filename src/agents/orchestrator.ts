@@ -141,13 +141,15 @@ export class OrchestratorAgent extends BaseAgent {
       required: ['overall'],
     };
 
+    const fmtPct = (v: number | null | undefined): string => (v == null ? 'N/A' : `${v > 0 ? '+' : ''}${v}%`);
+
     const prompt = `## 市场数据
-SPX: ${marketData.spx.price.value} (${marketData.spx.price.change > 0 ? '+' : ''}${marketData.spx.price.change}%)
-IXIC: ${marketData.ixic.price.value} (${marketData.ixic.price.change > 0 ? '+' : ''}${marketData.ixic.price.change}%)
-VIX: ${marketData.vix.value.value}
-美元指数: ${marketData.dollarIndex.value.value}
-10Y美债: ${marketData.usTreasury.yield10y.value}%
-2Y美债: ${marketData.usTreasury.yield2y?.value}%
+SPX: ${marketData.spx?.price?.value ?? 'N/A'} (${fmtPct(marketData.spx?.price?.change)})
+IXIC: ${marketData.ixic?.price?.value ?? 'N/A'} (${fmtPct(marketData.ixic?.price?.change)})
+VIX: ${marketData.vix?.value?.value ?? 'N/A'}
+美元指数: ${marketData.dollarIndex?.value?.value ?? 'N/A'}
+10Y美债: ${marketData.usTreasury?.yield10y?.value ?? 'N/A'}%
+2Y美债: ${marketData.usTreasury?.yield2y?.value ?? 'N/A'}%
 
 ## 技术面 (${technical.score}/100 ${technical.direction})
 SPX短期: ${technical.spx.shortTerm.trend}, ${technical.spx.shortTerm.keySignal}
@@ -168,7 +170,7 @@ ${sentiment.keyPoints.join('; ')}
 
 ## 反驳分析
 看空力度: ${rebuttal.bearScore}/100 (强度: ${rebuttal.rebuttalStrength})
-看空论据: ${rebuttal.bearPoints.map(p => p.point).join('; ')}
+看空论据: ${(rebuttal.bearPoints ?? []).map(p => p.point).join('; ')}
 评分修正: ${rebuttal.adjustedScore ?? '未修正'} (${rebuttal.netEffect})
 
 ## 历史校准
@@ -231,7 +233,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       });
 
       const featuresRepo = new ScenarioFeaturesRepo(db);
-      const d = report.marketData.dollarIndex.value.change;
+      const d = report.marketData?.dollarIndex?.value?.change ?? 0;
       featuresRepo.insert({
         date: report.timestamp.slice(0, 10),
         reportId,
@@ -239,7 +241,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
         dollarMagnitude: Math.abs(d),
         tipsDirection: 'flat',
         tipsMagnitude: 0,
-        vixLevel: report.marketData.vix.value.value,
+        vixLevel: report.marketData?.vix?.value?.value ?? 0,
         fedStance: 'neutral',
         momentumDirection: report.overall.direction === 'bullish' ? 'up' : report.overall.direction === 'bearish' ? 'down' : 'flat',
         consecutiveDays: 0,

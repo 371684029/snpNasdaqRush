@@ -120,10 +120,10 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
   // 反驳摘要
   console.log(`\n  🔴 强制反驳摘要`);
   console.log(`  反驳强度: ${rebuttal.rebuttalStrength} | 看空力度: ${rebuttal.bearScore}/100`);
-  for (const point of rebuttal.bearPoints.slice(0, 3)) {
+  for (const point of (rebuttal.bearPoints ?? []).slice(0, 3)) {
     console.log(`  · ${point.point} (${point.probability}%概率)`);
   }
-  for (const vul of rebuttal.bullVulnerabilities.slice(0, 2)) {
+  for (const vul of (rebuttal.bullVulnerabilities ?? []).slice(0, 2)) {
     console.log(`  · 看多漏洞: ${vul.vulnerability}`);
   }
   if (rebuttal.adjustedScore) {
@@ -155,13 +155,14 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
   }
 
   // 尾部风险
-  if (tailRisks.length > 0) {
+  const tailRiskList = tailRisks ?? [];
+  if (tailRiskList.length > 0) {
     console.log(`\n  ⚠️ 尾部风险`);
-    for (const risk of tailRisks) {
+    for (const risk of tailRiskList) {
       console.log(`  ${risk.probability}% → ${risk.risk}: ${risk.impact} (触发: ${risk.trigger})`);
       console.log(`    对冲: ${risk.mitigation}`);
     }
-    const noRisk = tailRisks.reduce((p, r) => p * (1 - r.probability / 100), 1);
+    const noRisk = tailRiskList.reduce((p, r) => p * (1 - r.probability / 100), 1);
     console.log(`  综合尾部风险指数: ${((1 - noRisk) * 100).toFixed(1)}%`);
   }
 
@@ -269,14 +270,14 @@ function renderReportMarkdown(report: SnpAnalysisReport, horizon: Horizon): stri
   lines.push(`**反驳强度**: ${rebuttal.rebuttalStrength} | **看空力度**: ${rebuttal.bearScore}/100`);
   lines.push(``);
   lines.push(`### 看空论据`);
-  for (const bp of rebuttal.bearPoints) {
+  for (const bp of (rebuttal.bearPoints ?? [])) {
     lines.push(`- **${bp.point}** (${bp.probability}%概率)`);
     lines.push(`  - 证据: ${bp.evidence}`);
     lines.push(`  - 影响: ${bp.impact}`);
   }
   lines.push(``);
   lines.push(`### 看多漏洞`);
-  for (const vul of rebuttal.bullVulnerabilities) {
+  for (const vul of (rebuttal.bullVulnerabilities ?? [])) {
     lines.push(`- **${vul.vulnerability}**`);
     if (vul.originalPoint) lines.push(`  - 原论点: ${vul.originalPoint}`);
     if (vul.counterCondition) lines.push(`  - 反制条件: ${vul.counterCondition}`);
@@ -324,17 +325,18 @@ function renderReportMarkdown(report: SnpAnalysisReport, horizon: Horizon): stri
   }
 
   // 尾部风险
-  if (tailRisks.length > 0) {
+  const tailRiskList = tailRisks ?? [];
+  if (tailRiskList.length > 0) {
     lines.push(`## ⚠️ 尾部风险`);
     lines.push(``);
-    for (const risk of tailRisks) {
+    for (const risk of tailRiskList) {
       lines.push(`### ${risk.probability}% — ${risk.risk}`);
       lines.push(`- **影响**: ${risk.impact}`);
       lines.push(`- **触发条件**: ${risk.trigger}`);
       lines.push(`- **对冲措施**: ${risk.mitigation}`);
       lines.push(``);
     }
-    const noRisk = tailRisks.reduce((p, r) => p * (1 - r.probability / 100), 1);
+    const noRisk = tailRiskList.reduce((p, r) => p * (1 - r.probability / 100), 1);
     lines.push(`**综合尾部风险指数**: ${((1 - noRisk) * 100).toFixed(1)}%`);
     lines.push(``);
   }
