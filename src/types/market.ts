@@ -105,7 +105,7 @@ export interface IndexPriceRecord {
 }
 
 /** 搜索引擎类型 */
-export type SearchEngine = 'tavily';
+export type SearchEngine = 'tavily' | 'opencode' | 'unknown';
 
 /** 搜索结果 */
 export interface SearchResult {

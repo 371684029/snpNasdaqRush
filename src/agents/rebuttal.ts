@@ -151,7 +151,12 @@ function adjustScoreWithRebuttal(
     strong: 0.35,
   };
 
-  const adjustment = (bearScore - originalScore) * strengthMultiplier[rebuttalStrength];
+  // bearScore 代表纯看空力度 (0-100，越高越空)。
+  // 不论原始评分高低，只要反驳有力度就应下调评分。
+  // 公式：扣减量 = (bearScore / 100) × originalScore × 强度系数
+  // 使得：bearScore=42, original=70, moderate → -5.88 ≈ -6（与设计文档一致）
+  //       bearScore=80, original=70, moderate → -11.2 → 58.8（高空头力度正确下调）
+  const adjustment = -(bearScore / 100) * originalScore * strengthMultiplier[rebuttalStrength];
   const adjustedScore = Math.max(0, Math.min(100, Math.round(originalScore + adjustment)));
 
   const absAdjust = Math.abs(adjustment);

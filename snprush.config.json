@@ -1,24 +1,25 @@
 {
-  "llm": {
-    "provider": "opencode-go",
-    "models": {
-      "dataCollector": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "validator": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "technical": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "fundamental": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "sentiment": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "etf": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "rebuttal": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
-      "orchestrator": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" }
-    }
+  "models": {
+    "dataCollector": { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "validator":     { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "technical":     { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "fundamental":   { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "sentiment":     { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "etf":           { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "rebuttal":      { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" },
+    "orchestrator":  { "providerID": "opencode-go", "modelID": "deepseek-v4-pro" }
   },
   "search": {
-    "engines": {
-      "exa": { "enabled": false },
-      "opencode": { "enabled": true }
-    }
+    "tavilyApiKey": "",
+    "defaultResults": 5,
+    "cacheMinutes": 5
   },
-  "database": { "path": "./data/snprush.db", "autoSnapshot": true },
-  "investment": { "horizon": "all", "platform": "any" },
-  "output": { "language": "zh-CN", "format": "table" }
+  "database": {
+    "path": "./data/snprush.db"
+  },
+  "investment": {
+    "defaultHorizon": "all",
+    "stopLossRange": [3, 5],
+    "maxTailRiskIndex": 20
+  }
 }

@@ -13,8 +13,8 @@
 ### 前置条件
 
 - Node.js >= 20
-- opencode CLI 已安装且可用（`opencode run -m` 能正常调用）
-- （可选）Tavily API Key — 用于金融数据搜索，不配会降级到 DuckDuckGo 兜底
+- opencode HTTP Server 已启动（默认 `http://localhost:8080`，账密通过 `OPENCODE_SERVER` / `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` 环境变量配置）
+- （可选）Tavily API Key — 用于实时金融数据搜索；未配置时数据采集依赖 LLM 自身知识，实时性较差
 
 ### 安装
 
@@ -105,22 +105,22 @@ Commander.js (命令路由)
     ▼
 Orchestrator (编排层)
     │
-    ├──→ 数据采集 Agent (glm-5.1)
-    │     Tavily 搜索 + DuckDuckGo 兜底
+    ├──→ 数据采集 Agent (deepseek-v4-pro)
+    │     Tavily 实时搜索（可选）
     │     交叉验证 + 来源分级 (A/B/C)
     │
-    ├──→ 四维度分析 (glm-5.1 × 4)
+    ├──→ 四维度分析 (deepseek-v4-pro × 4，串行执行)
     │     ├── 技术面 (双指数本地计算 MA/RSI/MACD + LLM 解读)
     │     │         SPX 短期/中长期 + IXIC 短期/中长期 + 相对强弱 + 板块轮动
     │     ├── 基本面 (估值水位/盈利展望/美联储政策/宏观)
     │     ├── 情绪面 (VIX/P-C比率/资金流/机构持仓/市场宽度)
     │     └── ETF/板块面 (SPY/QQQ/VOO 对比 + 板块轮动信号)
     │
-    ├──→ 强制反驳 Agent (glm-5.1, 独立 session)
+    ├──→ 强制反驳 Agent (deepseek-v4-pro, 独立 session)
     │     专门找看空论据，客观指标判定反驳强度
     │     评分修正: weak=10% / moderate=20% / strong=35%
     │
-    └──→ 综合编排 Agent (glm-5.1)
+    └──→ 综合编排 Agent (deepseek-v4-pro)
           注入校准上下文 + 三情景分析 + 尾部风险
           输出双轨策略: 短期入场止损 + 中长期定投加减仓 + 股债配置建议
 ```
@@ -264,14 +264,14 @@ snpNasdaqRush/
 │   │   ├── snapshot.ts       # 数据快照
 │   │   └── history.ts        # 历史数据
 │   ├── agents/
-│   │   ├── base.ts           # Agent 基类 (opencode CLI)
+│   │   ├── base.ts           # Agent 基类 (opencode HTTP API)
 │   │   ├── data-collector.ts # 数据采集 + Tavily 搜索
 │   │   ├── validator.ts      # 信息验证 + 来源分级
 │   │   ├── analysis-agents.ts# 四维度 Agent (技术/基本/情绪/ETF)
 │   │   ├── rebuttal.ts       # 强制反驳 Agent
 │   │   └── orchestrator.ts   # 综合编排 Agent
 │   ├── data/
-│   │   ├── tavily-client.ts  # Tavily API 封装 + DuckDuckGo 兜底
+│   │   ├── tavily-client.ts  # Tavily API 封装（可选搜索）
 │   │   └── search-router.ts  # 搜索路由器
 │   ├── db/
 │   │   ├── index.ts          # SQLite 初始化
@@ -309,8 +309,8 @@ snpNasdaqRush/
 |------|------|------|
 | 语言 | TypeScript | 类型安全 |
 | CLI | Commander.js | 成熟稳定 |
-| LLM | opencode CLI (`opencode run -m`，glm-5.1) | — |
-| 搜索 | Tavily API + DuckDuckGo 兜底 | 金融数据覆盖好 |
+| LLM | opencode HTTP API（`deepseek-v4-pro`） | 本地 LLM，可替换模型 |
+| 搜索 | Tavily API（可选，无 key 时依赖 LLM 知识） | 金融数据覆盖好 |
 | 数据库 | SQLite (better-sqlite3) | 零配置、本地、够用 |
 | 终端输出 | chalk + cli-table3 | 表格+颜色 |
 | 报告展示 | 内置 HTTP 服务 (server.cjs) | 端口 81 文件列表页 |
