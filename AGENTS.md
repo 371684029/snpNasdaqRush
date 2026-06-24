@@ -25,5 +25,11 @@ Non-obvious caveats for this environment:
   privileged). On this VM prefer a non-privileged port to avoid sudo, e.g.
   `PORT=8088 node server.cjs`; if you must use 81, run as root with the absolute node path
   (`sudo /exec-daemon/node server.cjs`, since node is not on root's PATH).
-- There are no automated tests in this repo (no test script / no test files).
+- Automated tests use **vitest**: run `npm test` (`vitest run`). Specs live in `test/` (outside
+  `tsconfig` `include`, so they don't affect `build`/`lint`).
 - Copy `.env.example` to `.env` if you need to point at an opencode server / set a Tavily key.
+
+### Git authorship (user preference, permanent)
+- Always author/commit as **`wll <371684029@qq.com>`**. At the start of a session set:
+  `git config user.name "wll"` and `git config user.email "371684029@qq.com"` (the cloud VM
+  otherwise defaults to a generic agent identity).
