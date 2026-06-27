@@ -10,7 +10,7 @@ commands live in `package.json` (`build`, `dev`, `start`, `lint`) and `README.md
 Non-obvious caveats for this environment:
 
 - The CLI's core flows (`price`, `analysis`, `etf`, `snapshot`) require an external
-  **opencode LLM server** (`OPENCODE_SERVER`, default `http://localhost:8080`, Basic auth via
+  **opencode LLM server** (`OPENCODE_SERVER`, default `http://localhost:16688`, Basic auth via
   `OPENCODE_SERVER_USERNAME`/`OPENCODE_SERVER_PASSWORD`) which is NOT part of this repo and is
   not running in the cloud VM. Without it, data collection fails — `price` degrades gracefully
   (prints a "数据采集失败" notice), `analysis`/`etf` error out. To exercise these, set

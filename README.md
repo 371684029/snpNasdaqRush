@@ -13,7 +13,7 @@
 ### 前置条件
 
 - Node.js >= 20
-- opencode HTTP Server 已启动（默认 `http://localhost:8080`，账密通过 `OPENCODE_SERVER` / `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` 环境变量配置）
+- opencode HTTP Server 已启动（默认 `http://localhost:16688`，账密通过 `OPENCODE_SERVER` / `OPENCODE_SERVER_USERNAME` / `OPENCODE_SERVER_PASSWORD` 环境变量配置）
 - （可选）Tavily API Key — 用于实时金融数据搜索；未配置时数据采集依赖 LLM 自身知识，实时性较差
 
 ### 安装
