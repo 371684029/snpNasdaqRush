@@ -210,6 +210,34 @@ export class BaseAgent {
       }
     })();
 
+    // 4. 最后兜底:把原始输出回喂给 LLM,要求自身修复 JSON 语法
+    try {
+      const repairPrompt =
+        `你上一条回复不是合法 JSON,JSON.parse 失败于 ${diag}。\n` +
+        `请只输出修复后的完整 JSON(以 { 开头,以 } 结尾),不要任何解释、不要 markdown 代码块。\n` +
+        `常见问题:数组元素缺少引号包裹(如数字+中文混合 such as -8.27%月跌幅)、字段名未加引号、字符串内部出现未转义的双引号。\n` +
+        `请确保所有字符串值都用双引号包裹,字符串内的双引号用 \\" 转义。\n\n` +
+        `原始输出(需要修复):\n${text}`;
+      const repairedText = await this.prompt(repairPrompt);
+
+      const repairedClean = deepClean(repairedText);
+      parsed = tryParse(repairedClean);
+      if (parsed) return parsed;
+
+      const repairedCodeBlock = repairedClean.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (repairedCodeBlock) {
+        parsed = tryParse(deepClean(repairedCodeBlock[1]));
+        if (parsed) return parsed;
+      }
+      const repairedJsonMatch = repairedClean.match(/\{[\s\S]*\}/);
+      if (repairedJsonMatch) {
+        parsed = tryParse(repairedJsonMatch[0]);
+        if (parsed) return parsed;
+      }
+    } catch {
+      // self-heal 自身失败就放弃,继续抛原错
+    }
+
     throw new Error(`Agent ${this.name}: Failed to parse structured output.\n  JSON解析错误: ${diag}\n  前300字符: ${text.slice(0, 300)}`);
   }
 
