@@ -1,12 +1,19 @@
-// Agent 基类 — 通过 opencode HTTP API 调用 LLM
+// Agent 基类 — 通过 opencode CLI（opencode run）调用 LLM
+// 使用 CLI 而非 HTTP API，因为 opencode web 的 HTTP API 会路由到默认模型
+// (opencode-go/glm-5.2)，该模型周限额已耗尽。
+// CLI 方式能正确解析 opencode/deepseek-v4-flash-free
+
+import { execSync } from 'child_process';
 import type { ModelConfig } from '../types/config.js';
 
-const OPENCODE_SERVER = process.env.OPENCODE_SERVER || 'http://localhost:16688';
-const OPENCODE_USERNAME = process.env.OPENCODE_SERVER_USERNAME || 'opencode';
-const OPENCODE_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD || 'snprush2026';
-
-function authHeader(): string {
-  return 'Basic ' + Buffer.from(`${OPENCODE_USERNAME}:${OPENCODE_PASSWORD}`).toString('base64');
+/**
+ * Escape a string for safe use in a shell echo statement.
+ * Single-quote wrapping: only problematic char is the single quote itself.
+ * Replace each ' with '\'' (end current quote, literal quote, start new quote)
+ */
+function shellEscape(input: string): string {
+  const escaped = input.replace(/'/g, "'\\''");
+  return `'${escaped}'`;
 }
 
 export interface AgentOptions {
@@ -26,79 +33,42 @@ export class BaseAgent {
     this.systemPrompt = options.systemPrompt ?? '';
   }
 
-  /** 创建新 session */
-  private async createSession(): Promise<string> {
-    const res = await fetch(`${OPENCODE_SERVER}/session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader(),
-      },
+  /** 调用 opencode run CLI 并返回 LLM 输出文本 */
+  private callOpencodeRun(promptText: string, system?: string): string {
+    let fullPrompt = promptText;
+    if (system) {
+      fullPrompt = `${system}\n\n${promptText}`;
+    }
+
+    const modelArg = `${this.model.providerID}/${this.model.modelID}`;
+    const escapedPrompt = shellEscape(fullPrompt);
+
+    // 用 echo 管道传给 opencode run；stderr 是日志，用 2>/dev/null 过滤
+    const cmd = `echo ${escapedPrompt} | opencode run -m ${modelArg} 2>/dev/null`;
+
+    const result = execSync(cmd, {
+      timeout: 300_000, // 5 分钟
+      maxBuffer: 1024 * 1024 * 10, // 10MB
+      shell: '/bin/bash',
+      encoding: 'utf-8' as const,
     });
 
-    if (!res.ok) {
-      throw new Error(`Agent ${this.name}: create session failed: ${res.status} ${await res.text()}`);
-    }
+    const output = result || '';
 
-    const data = await res.json() as { id: string };
-    return data.id;
-  }
+    // 清理输出：去掉 ANSI 转义、空行、> 提示行、timestamp 行
+    const lines = output.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .filter(l => !l.startsWith('timestamp='))
+      .filter(l => !l.startsWith('> '))
+      .filter(l => !l.startsWith('Usage:'));
 
-  /** 发送消息到 session，等待完整回复 */
-  private async sendMessage(sessionId: string, content: string, system?: string): Promise<string> {
-    const body: Record<string, unknown> = {
-      providerID: this.model.providerID,
-      modelID: this.model.modelID,
-      parts: [{ type: 'text', text: content }],
-    };
-    if (system) {
-      body.system = system;
-    }
-
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const res = await fetch(`${OPENCODE_SERVER}/session/${sessionId}/message`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader(),
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(300_000),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Agent ${this.name}: send message failed: ${res.status} ${await res.text()}`);
-        }
-
-        const data = await res.json() as { parts: Array<{ type: string; text?: string }> };
-        const textParts = (data.parts || [])
-          .filter((p) => p.type === 'text' && p.text)
-          .map((p) => p.text!)
-          .join('\n');
-
-        if (!textParts.trim()) {
-          throw new Error(`Agent ${this.name}: empty response from LLM`);
-        }
-
-        return textParts;
-      } catch (err) {
-        const isLastAttempt = attempt === maxRetries;
-        if (isLastAttempt) throw err;
-        const delay = attempt * 5000;
-        console.error(`  ⚠️ Agent ${this.name} attempt ${attempt} failed: ${err instanceof Error ? err.message : String(err)}. Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
-      }
-    }
-
-    throw new Error(`Agent ${this.name}: all retries exhausted`);
+    return lines.join('\n');
   }
 
   /** 发送 prompt，获取文本回复 */
   async prompt(content: string): Promise<string> {
-    const sessionId = await this.createSession();
-    const text = await this.sendMessage(sessionId, content, this.systemPrompt || undefined);
+    const text = this.callOpencodeRun(content, this.systemPrompt || undefined);
     return text.trim();
   }
 
@@ -109,12 +79,13 @@ export class BaseAgent {
 
     const text = await this.prompt(fullContent);
 
-    function tryParse(raw: string): T | null {
-      try {
-        return JSON.parse(raw) as T;
-      } catch {
-        return null;
-      }
+    return this.parseJSON<T>(text, content);
+  }
+
+  /** JSON 解析含多级修复（self-heal） */
+  private async parseJSON<T>(raw: string, _originalContent?: string): Promise<T> {
+    function tryParse(s: string): T | null {
+      try { return JSON.parse(s) as T; } catch { return null; }
     }
 
     function deepClean(s: string): string {
@@ -122,69 +93,65 @@ export class BaseAgent {
         .replace(/[\x00-\x1f]/g, ' ')
         .replace(/\\\n/g, '')
         .replace(/\\t/g, ' ')
-        .replace(/\u201c/g, '"')
-        .replace(/\u201d/g, '"')
-        .replace(/\u2018/g, "'")
-        .replace(/\u2019/g, "'")
+        .replace(/\u201c/g, '"').replace(/\u201d/g, '"')
+        .replace(/\u2018/g, "'").replace(/\u2019/g, "'")
         .replace(/，/g, ',')
         .replace(/,(\s*[}\]])/g, '$1')
         .replace(/\s{2,}/g, ' ')
         .trim();
-
       r = r.replace(/\\([^"\\\/bfnrtu])/g, (_, c) => c);
       return r;
     }
 
+    function getParseErrorDetail(s: string): string {
+      try { JSON.parse(s); return '无错误'; }
+      catch (e) {
+        const msg = String(e);
+        const m = msg.match(/(?:position|at)\s*(\d+)/i);
+        if (m) {
+          const p = parseInt(m[1], 10);
+          const start = Math.max(0, p - 40);
+          const end = Math.min(s.length, p + 40);
+          return `位置 ${p}: ...${JSON.stringify(s.slice(start, end))}...`;
+        }
+        return msg.slice(0, 200);
+      }
+    }
+
     // 1. 深度清洁后直接解析
-    let cleaned = deepClean(text);
+    let cleaned = deepClean(raw);
     let parsed = tryParse(cleaned);
     if (parsed) return parsed;
 
-    // 2. 从 markdown 代码块提取
-    const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      parsed = tryParse(deepClean(codeBlockMatch[1]));
+    // 2. markdown 代码块提取
+    const cb = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (cb) {
+      parsed = tryParse(deepClean(cb[1]));
       if (parsed) return parsed;
     }
 
-    // 3. 提取最外层 JSON 对象 + 状态机修复
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const jsonStr = jsonMatch[0];
-
-      parsed = tryParse(jsonStr);
+    // 3. 最外层 JSON 对象提取 + 状态机修复
+    const jm = cleaned.match(/\{[\s\S]*\}/);
+    if (jm) {
+      parsed = tryParse(jm[0]);
       if (parsed) return parsed;
 
-      // 状态机修复未转义引号
+      // 状态机修复字符串内未转义引号
       let fixed = '';
-      let inString = false;
-      let escapeNext = false;
-      for (let i = 0; i < jsonStr.length; i++) {
-        const ch = jsonStr[i];
-        if (escapeNext) {
-          fixed += ch;
-          escapeNext = false;
-          continue;
-        }
-        if (ch === '\\') {
-          fixed += ch;
-          escapeNext = true;
-          continue;
-        }
+      let inStr = false;
+      let esc = false;
+      for (let i = 0; i < jm[0].length; i++) {
+        const ch = jm[0][i];
+        if (esc) { fixed += ch; esc = false; continue; }
+        if (ch === '\\') { fixed += ch; esc = true; continue; }
         if (ch === '"') {
-          if (inString) {
-            const nextNonSpace = jsonStr.slice(i + 1).match(/\S/);
-            const nextCh = nextNonSpace ? nextNonSpace[0] : '';
-            if (nextCh === ',' || nextCh === '}' || nextCh === ']' || nextCh === ':' || nextCh === '') {
-              inString = false;
-              fixed += ch;
-            } else {
-              fixed += '\\"';
-            }
-          } else {
-            inString = true;
-            fixed += ch;
-          }
+          if (inStr) {
+            const nextNS = jm[0].slice(i + 1).match(/\S/);
+            const next = nextNS ? nextNS[0] : '';
+            if (next === ',' || next === '}' || next === ']' || next === ':' || next === '') {
+              inStr = false; fixed += ch;
+            } else { fixed += '\\"'; }
+          } else { inStr = true; fixed += ch; }
           continue;
         }
         fixed += ch;
@@ -193,55 +160,37 @@ export class BaseAgent {
       if (parsed) return parsed;
     }
 
-    const diag = (() => {
-      try {
-        JSON.parse(cleaned);
-        return '无错误';
-      } catch (e) {
-        const msg = String(e);
-        const posMatch = msg.match(/(?:position|at)\s*(\d+)/i);
-        if (posMatch) {
-          const pos = parseInt(posMatch[1], 10);
-          const start = Math.max(0, pos - 40);
-          const end = Math.min(cleaned.length, pos + 40);
-          return `位置 ${pos}: ...${JSON.stringify(cleaned.slice(start, end))}...`;
-        }
-        return msg.slice(0, 200);
-      }
-    })();
+    const diag = getParseErrorDetail(cleaned);
 
-    // 4. 最后兜底:把原始输出回喂给 LLM,要求自身修复 JSON 语法
+    // 4. 最后兜底：回喂 LLM 修复
     try {
       const repairPrompt =
         `你上一条回复不是合法 JSON,JSON.parse 失败于 ${diag}。\n` +
         `请只输出修复后的完整 JSON(以 { 开头,以 } 结尾),不要任何解释、不要 markdown 代码块。\n` +
-        `常见问题:数组元素缺少引号包裹(如数字+中文混合 such as -8.27%月跌幅)、字段名未加引号、字符串内部出现未转义的双引号。\n` +
+        `常见问题:数组元素缺少引号包裹(如数字+中文混合 -8.27%月跌幅)、字段名未加引号、字符串内部出现未转义的双引号。\n` +
         `请确保所有字符串值都用双引号包裹,字符串内的双引号用 \\" 转义。\n\n` +
-        `原始输出(需要修复):\n${text}`;
+        `原始输出(需要修复):\n${raw}`;
       const repairedText = await this.prompt(repairPrompt);
-
       const repairedClean = deepClean(repairedText);
       parsed = tryParse(repairedClean);
       if (parsed) return parsed;
 
-      const repairedCodeBlock = repairedClean.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (repairedCodeBlock) {
-        parsed = tryParse(deepClean(repairedCodeBlock[1]));
-        if (parsed) return parsed;
-      }
-      const repairedJsonMatch = repairedClean.match(/\{[\s\S]*\}/);
-      if (repairedJsonMatch) {
-        parsed = tryParse(repairedJsonMatch[0]);
-        if (parsed) return parsed;
-      }
+      const rcb = repairedClean.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (rcb) { parsed = tryParse(deepClean(rcb[1])); if (parsed) return parsed; }
+      const rjm = repairedClean.match(/\{[\s\S]*\}/);
+      if (rjm) { parsed = tryParse(rjm[0]); if (parsed) return parsed; }
     } catch {
-      // self-heal 自身失败就放弃,继续抛原错
+      // self-heal 自身失败就放弃
     }
 
-    throw new Error(`Agent ${this.name}: Failed to parse structured output.\n  JSON解析错误: ${diag}\n  前300字符: ${text.slice(0, 300)}`);
+    throw new Error(
+      `Agent ${this.name}: Failed to parse structured output.\n` +
+      `  JSON解析错误: ${diag}\n` +
+      `  前300字符: ${raw.slice(0, 300)}`
+    );
   }
 
   async cleanup(): Promise<void> {
-    // no-op
+    // CLI 模式无需清理
   }
 }
