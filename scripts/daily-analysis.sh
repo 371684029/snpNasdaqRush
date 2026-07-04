@@ -15,7 +15,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] SnpRush 每日分析开始" >> "$LOG_FILE" 
 
 # 拉取最新代码，有变更才构建；网络失败不阻断分析
 BEFORE=$(git rev-parse HEAD)
-git pull >> "$LOG_FILE" 2>&1 || true
+git pull --rebase >> "$LOG_FILE" 2>&1 || true
 AFTER=$(git rev-parse HEAD)
 
 if [ "$BEFORE" != "$AFTER" ]; then
