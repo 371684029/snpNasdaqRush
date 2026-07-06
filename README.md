@@ -207,11 +207,11 @@ node dist/index.js analysis --md    # 生成 docs/snprush-analysis-YYYY-MM-DD.md
 
 ### 每日定时分析
 
-已在服务器设置每日 11:20 自动执行分析并生成 Markdown 报告（cron）：
+已在服务器设置每日 11:00 自动执行分析并生成 Markdown 报告（cron）：
 
 ```bash
 crontab -l
-# 30 11 * * * /root/git/snpNasdaqRush/scripts/daily-analysis.sh
+# 0 11 * * * /root/git/snpNasdaqRush/scripts/daily-analysis.sh
 ```
 
 日志文件在 `logs/daily-YYYY-MM-DD.log`，报告自动保存到 `docs/` 目录。
