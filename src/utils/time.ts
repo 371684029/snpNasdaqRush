@@ -111,6 +111,16 @@ export function formatNowET(): string {
   }).replace(/\//g, '-');
 }
 
+/** 加减日历日（不改变时区，保留原日期字符串格式） */
+export function addCalendarDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00+08:00');
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /** 获取今日日期 YYYY-MM-DD（按北京时间 Asia/Shanghai 日历日，不受运行机器时区影响） */
 export function todayDate(now: Date = new Date()): string {
   const { year, month, day } = getZonedParts('Asia/Shanghai', now);
