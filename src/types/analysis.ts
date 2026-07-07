@@ -168,6 +168,29 @@ export interface MidTermStrategy {
   riskWarning: string;
 }
 
+/** 长期展望 — 单期限 */
+export type LongTermHorizonYears = 1 | 3 | 5;
+
+export interface LongTermHorizonOutlook {
+  years: LongTermHorizonYears;
+  label: string;
+  direction: Direction;
+  biasScore: number;
+  confidence: 'low' | 'moderate' | 'high';
+  trendLabel: string;
+  returnBand: string;
+  drivers: string[];
+  risks: string[];
+  dcaAdvice: string;
+}
+
+/** 长期展望汇总 */
+export interface LongTermOutlook {
+  summary: string;
+  horizons: LongTermHorizonOutlook[];
+  disclaimer: string;
+}
+
 /** 完整分析报告 */
 export interface SnpAnalysisReport {
   timestamp: string;
@@ -190,6 +213,7 @@ export interface SnpAnalysisReport {
     shortTerm: ShortTermStrategy;
     midTerm: MidTermStrategy;
   };
+  longTermOutlook?: LongTermOutlook;
 }
 
 /** 分析报告存储记录 */

@@ -66,3 +66,14 @@ export interface ScenarioFeature {
   backfillStatus: 'pending' | 'filled';
   createdAt: string;
 }
+
+/** 历史模式匹配结果 */
+export interface PatternMatch {
+  date: string;
+  reportId: number;
+  similarity: number; // 0-1
+  direction: Direction;
+  score: number;
+  actualReturn: number | null;
+  actual5dReturn: number | null;
+}

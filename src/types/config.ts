@@ -21,6 +21,34 @@ export interface AnalysisOptions {
 export interface CalibrateOptions {
   days: number;
   detail: boolean;
+  tearsheet?: boolean;
+  md?: boolean;
+}
+
+/** 周期摘要命令选项 */
+export interface DigestOptions {
+  days: number;
+  md: boolean;
+  json: boolean;
+}
+
+/** Webhook 告警配置 */
+export type WebhookType = 'generic' | 'dingtalk' | 'wecom';
+
+export interface AlertsConfig {
+  webhookUrl: string;
+  webhookType: WebhookType;
+  /** 评分较上一日变化超过此值时告警 */
+  scoreSwingThreshold: number;
+  notifyOnSuccess: boolean;
+  notifyOnFailure: boolean;
+}
+
+/** 通知命令选项 */
+export interface NotifyOptions {
+  test: boolean;
+  daily: boolean;
+  exitCode: number;
 }
 
 /** 全局配置 */
@@ -48,6 +76,7 @@ export interface SnpRushConfig {
     stopLossRange: [number, number];
     maxTailRiskIndex: number;
   };
+  alerts: AlertsConfig;
 }
 
 /** 默认配置 */
@@ -74,5 +103,12 @@ export const DEFAULT_CONFIG: SnpRushConfig = {
     defaultHorizon: 'all',
     stopLossRange: [3, 5],
     maxTailRiskIndex: 20,
+  },
+  alerts: {
+    webhookUrl: '',
+    webhookType: 'generic',
+    scoreSwingThreshold: 8,
+    notifyOnSuccess: false,
+    notifyOnFailure: true,
   },
 };
