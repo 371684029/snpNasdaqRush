@@ -8,6 +8,10 @@ import { etfCommand } from './commands/etf.js';
 import { calibrateCommand } from './commands/calibrate.js';
 import { snapshotCommand, initHistoryCommand } from './commands/snapshot.js';
 import { historyCommand } from './commands/history.js';
+import { diffCommand } from './commands/diff.js';
+import { digestCommand } from './commands/digest.js';
+import { outlookCommand } from './commands/outlook.js';
+import { notifyCommand } from './commands/notify.js';
 import { closeDb } from './db/index.js';
 import { loadConfig } from './utils/config.js';
 
@@ -131,6 +135,70 @@ program
     }
     try {
       await historyCommand(type as 'prices' | 'reports', parseInt(opts.days, 10) || 30);
+    } finally {
+      closeDb();
+    }
+  });
+
+// P2: 报告对比
+program
+  .command('diff')
+  .description('对比两日分析报告变化')
+  .argument('<dateA>', 'YYYY-MM-DD')
+  .argument('<dateB>', 'YYYY-MM-DD')
+  .option('--json', 'JSON 格式输出')
+  .action((dateA, dateB, opts) => {
+    try {
+      diffCommand(dateA, dateB, opts.json ?? false);
+    } finally {
+      closeDb();
+    }
+  });
+
+// P2: 周期摘要
+program
+  .command('digest')
+  .description('周期摘要（均分、跳变等）')
+  .option('--days <n>', '回顾天数', '7')
+  .option('--json', 'JSON 格式输出')
+  .option('--md', '写入 docs/')
+  .action((opts) => {
+    try {
+      digestCommand(parseInt(opts.days, 10) || 7, opts.md ?? false, opts.json ?? false);
+    } finally {
+      closeDb();
+    }
+  });
+
+// P2: 长期方向预期
+program
+  .command('outlook')
+  .description('长期方向预期（1/3/5 年，基于最新分析报告）')
+  .option('--json', 'JSON 输出')
+  .option('--md', '写入 docs/snprush-outlook-latest.md')
+  .action(async (opts) => {
+    try {
+      const code = outlookCommand({ json: opts.json ?? false, md: opts.md ?? false });
+      if (code !== 0) process.exit(code);
+    } finally {
+      closeDb();
+    }
+  });
+
+// P2: Webhook 告警
+program
+  .command('notify')
+  .description('Webhook 告警（测试 / 每日任务结束）')
+  .option('--test', '发送测试消息')
+  .option('--daily', '每日分析结束后通知')
+  .option('--exit <n>', '分析退出码（与 --daily 配合）', '0')
+  .action(async (opts) => {
+    try {
+      await notifyCommand({
+        test: opts.test ?? false,
+        daily: opts.daily ?? false,
+        exitCode: parseInt(opts.exit, 10) || 0,
+      });
     } finally {
       closeDb();
     }

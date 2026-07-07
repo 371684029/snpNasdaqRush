@@ -22,6 +22,7 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   } catch (err) {
     console.error('数据采集失败:', err instanceof Error ? err.message : err);
     await collector.cleanup();
+    process.exit(1);
     return;
   }
 
