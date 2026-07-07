@@ -9,6 +9,7 @@ import { ReportsRepo } from '../db/reports.js';
 import type { TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, Direction, ShortTermStrategy, MidTermStrategy, Scenarios, RebuttalAnalysis, SnpAnalysisReport } from '../types/analysis.js';
 import type { MarketData } from '../types/market.js';
 import type { EtfAnalysis } from '../types/etf.js';
+import { resolveOverallScore, enforceOverallScore } from '../utils/overall-score.js';
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
 
@@ -191,6 +192,13 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       };
     }>(prompt, schema);
 
+    // 评分一致性：以反驳修正分 + resolveOverallScore 为准，覆盖 LLM 自评分
+    const finalScore = resolveOverallScore(
+      { adjustedScore: rebuttal.adjustedScore },
+      { technical: technical.score, fundamental: fundamental.score, sentiment: sentiment.score },
+    );
+    const enforcedScore = enforceOverallScore(result.overall?.score, finalScore);
+
     const report: SnpAnalysisReport = {
       timestamp: new Date().toISOString(),
       marketData,
@@ -206,6 +214,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       tailRisks: rebuttal.tailRisks ?? [],
       overall: {
         ...result.overall,
+        score: enforcedScore,
         calibration: calibrationContext ?? {
           scoreRange: 'N/A',
           historicalAccuracy: null,
