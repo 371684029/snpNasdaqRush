@@ -105,22 +105,22 @@ Commander.js (命令路由)
     ▼
 Orchestrator (编排层)
     │
-    ├──→ 数据采集 Agent (deepseek-v4-pro)
+    ├──→ 数据采集 Agent (opencode-go/dsv4-pro)
     │     Tavily 实时搜索（可选）
     │     交叉验证 + 来源分级 (A/B/C)
     │
-    ├──→ 四维度分析 (deepseek-v4-pro × 4，串行执行)
+    ├──→ 四维度分析 (opencode-go/dsv4-pro × 4，串行执行)
     │     ├── 技术面 (双指数本地计算 MA/RSI/MACD + LLM 解读)
     │     │         SPX 短期/中长期 + IXIC 短期/中长期 + 相对强弱 + 板块轮动
     │     ├── 基本面 (估值水位/盈利展望/美联储政策/宏观)
     │     ├── 情绪面 (VIX/P-C比率/资金流/机构持仓/市场宽度)
     │     └── ETF/板块面 (SPY/QQQ/VOO 对比 + 板块轮动信号)
     │
-    ├──→ 强制反驳 Agent (deepseek-v4-pro, 独立 session)
+    ├──→ 强制反驳 Agent (opencode-go/dsv4-pro, 独立 session)
     │     专门找看空论据，客观指标判定反驳强度
     │     评分修正: weak=10% / moderate=20% / strong=35%
     │
-    └──→ 综合编排 Agent (deepseek-v4-pro)
+    └──→ 综合编排 Agent (opencode-go/dsv4-pro)
           注入校准上下文 + 三情景分析 + 尾部风险
           输出双轨策略: 短期入场止损 + 中长期定投加减仓 + 股债配置建议
 ```
@@ -309,7 +309,7 @@ snpNasdaqRush/
 |------|------|------|
 | 语言 | TypeScript | 类型安全 |
 | CLI | Commander.js | 成熟稳定 |
-| LLM | opencode HTTP API（`deepseek-v4-pro`） | 本地 LLM，可替换模型 |
+| LLM | opencode HTTP API（`opencode-go/dsv4-pro`） | 本地 LLM，可替换模型 |
 | 搜索 | Tavily API（可选，无 key 时依赖 LLM 知识） | 金融数据覆盖好 |
 | 数据库 | SQLite (better-sqlite3) | 零配置、本地、够用 |
 | 终端输出 | chalk + cli-table3 | 表格+颜色 |
