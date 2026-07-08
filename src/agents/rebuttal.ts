@@ -2,19 +2,21 @@
 
 import { BaseAgent } from './base.js';
 import { getConfig } from '../utils/config.js';
+import { adjustScoreWithRebuttal } from '../utils/rebuttal-score.js';
 import type { RebuttalAnalysis, TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, Direction, RebuttalStrength, BearPoint, BullVulnerability } from '../types/analysis.js';
 import type { EtfAnalysis } from '../types/etf.js';
 import type { MarketData } from '../types/market.js';
 
-const REBUTTAL_PROMPT = `你是美股投资分析的独立反驳者。你的唯一任务是找出所有支持美股下跌（标普500和纳斯达克）或风险的证据。
+const REBUTTAL_PROMPT = `你是美股投资分析的独立反驳者。你的任务是严格审查看多论据的漏洞，而非罗列通用看空理由。
 
-# 规则
-1. 你必须找到至少3条实质性看空论据
-2. 对每条看多论据，你必须尝试找到它的漏洞或适用条件
-3. 如果找不到看空论据，说明你不够努力——几乎任何时刻都有看空理由
-4. 你的评分（0-100）代表纯粹的看空力度，100=极度看空
-5. 不需要"平衡"观点，你只负责反驳
-6. 注意区分 SPX 和 IXIC 的不同风险暴露
+# 核心要求
+1. 你收到的"技术面/基本面/情绪面"已经包含了看多分析。你的工作是为这些看多论据找漏洞
+2. 对每条看多论据（keyPoints），你必须至少回答：它在什么条件下会失效？
+3. 如果某些看多论据在历史上反复出现但现在可能不适用了，这是最重要的漏洞
+4. bearScore（0-100）代表你找到的看多漏洞的严重程度，而非情绪感受
+5. 至少找到 3 个 bullVulnerabilities（看多漏洞），每个对应一个原始看多论据
+6. 必须包含 tailRisks（尾部风险），至少 2 条
+7. 注意区分 SPX 和 IXIC 的不同风险暴露
 
 # 输出格式
 {
@@ -65,7 +67,8 @@ export class RebuttalAgent extends BaseAgent {
 - IXIC中长期: ${technical.ixic.midTerm.trend}, 信号: ${technical.ixic.midTerm.keySignal}
 - 相对强弱: ${technical.relativeStrength}
 - 板块轮动: ${technical.sectorRotation}
-- 看多论据: ${technical.keyPoints.join('; ')}
+### 需严格审查的看多论据（每条都要找漏洞）:
+${technical.keyPoints.map((kp, i) => `  ${i + 1}. ${kp}`).join('\n')}
 
 ## 基本面分析
 - 评分: ${fundamental.score}/100 (${fundamental.direction})
@@ -73,14 +76,16 @@ export class RebuttalAgent extends BaseAgent {
 - 盈利: ${fundamental.earningsOutlook}
 - 美联储: ${fundamental.fedPolicy}
 - 宏观: ${fundamental.macroIndicators}
-- 看多论据: ${fundamental.keyPoints.join('; ')}
+### 需严格审查的看多论据:
+${fundamental.keyPoints.map((kp, i) => `  ${i + 1}. ${kp}`).join('\n')}
 
 ## 情绪面分析
 - 评分: ${sentiment.score}/100 (${sentiment.direction})
 - VIX: ${sentiment.vixAnalysis}
 - 资金流: ${sentiment.fundFlows}
 - 市场宽度: ${sentiment.marketBreadth}
-- 看多论据: ${sentiment.keyPoints.join('; ')}
+### 需严格审查的看多论据:
+${sentiment.keyPoints.map((kp, i) => `  ${i + 1}. ${kp}`).join('\n')}
 
 ## ETF/板块面
 - 估值: ${etf.valuation.level}
@@ -94,7 +99,7 @@ export class RebuttalAgent extends BaseAgent {
 - 美元指数: ${marketData.dollarIndex.value?.value}
 - 10Y美债: ${marketData.usTreasury.yield10y?.value}%
 
-请系统性地反驳上述分析，找出所有被忽略的风险。`;
+对上述每条看多论据，找出它的漏洞或失效条件（bullVulnerabilities）。不要重复罗列通用看空风险——每条 bullVulnerability 必须对应一个具体的原始看多论据。`;
 
     const rawResult = await this.structuredPrompt<{
       bearScore: number;
@@ -107,6 +112,7 @@ export class RebuttalAgent extends BaseAgent {
     const rebuttalStrength = determineRebuttalStrength(rawResult);
 
     const initialScore = Math.round((technical.score + fundamental.score + sentiment.score) / 3);
+    // 使用 utils/rebuttal-score.ts 的统一公式，删除本地重复实现
     const { adjustedScore, netEffect } = adjustScoreWithRebuttal(initialScore, rawResult.bearScore, rebuttalStrength);
 
     return {
@@ -138,29 +144,4 @@ function determineRebuttalStrength(rebuttal: { bearScore: number; bearPoints: Be
   if (strength >= 60) return 'strong';
   if (strength >= 35) return 'moderate';
   return 'weak';
-}
-
-function adjustScoreWithRebuttal(
-  originalScore: number,
-  bearScore: number,
-  rebuttalStrength: RebuttalStrength,
-): { adjustedScore: number; netEffect: RebuttalAnalysis['netEffect'] } {
-  const strengthMultiplier: Record<RebuttalStrength, number> = {
-    weak: 0.10,
-    moderate: 0.20,
-    strong: 0.35,
-  };
-
-  // bearScore 代表纯看空力度 (0-100，越高越空)。
-  // 不论原始评分高低，只要反驳有力度就应下调评分。
-  // 公式：扣减量 = (bearScore / 100) × originalScore × 强度系数
-  // 使得：bearScore=42, original=70, moderate → -5.88 ≈ -6（与设计文档一致）
-  //       bearScore=80, original=70, moderate → -11.2 → 58.8（高空头力度正确下调）
-  const adjustment = -(bearScore / 100) * originalScore * strengthMultiplier[rebuttalStrength];
-  const adjustedScore = Math.max(0, Math.min(100, Math.round(originalScore + adjustment)));
-
-  const absAdjust = Math.abs(adjustment);
-  const netEffect = absAdjust < 1 ? 'unchanged' : absAdjust < 5 ? 'downgraded' : 'significant_downgrade';
-
-  return { adjustedScore, netEffect };
 }

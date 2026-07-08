@@ -7,11 +7,38 @@ import { RebuttalAgent } from '../agents/rebuttal.js';
 import { OrchestratorAgent } from '../agents/orchestrator.js';
 import { header, separator, directionMark, scoreBar, changeColor, riskLevel, valuationMark } from '../utils/format.js';
 import { formatNow } from '../utils/time.js';
+import { IndexPricesRepo } from '../db/index-prices.js';
+import { getDb } from '../db/index.js';
+import { fetchYahooIndexDailyCloses } from '../data/yahoo-index-history.js';
 import type { Horizon } from '../types/config.js';
 import type { SnpAnalysisReport } from '../types/analysis.js';
 
 export async function analysisCommand(options: { horizon: Horizon; json: boolean; save: boolean; md: boolean }): Promise<void> {
   console.log('\n🔬 SnpRush 综合分析启动...\n');
+
+  // Step 0: 自动回填历史数据（确保校准有样本）
+  try {
+    const db = getDb();
+    const priceRepo = new IndexPricesRepo(db);
+    if (priceRepo.count() < 10) {
+      console.log('  📥 Step 0: 历史数据不足，自动回填 Yahoo 日线...');
+      const rows = await fetchYahooIndexDailyCloses(120);
+      let saved = 0;
+      for (const row of rows) {
+        try {
+          priceRepo.upsert({
+            date: row.date,
+            spxClose: row.spxClose, spxHigh: null, spxLow: null, spxPe: null,
+            ixicClose: row.ixicClose, ixicHigh: null, ixicLow: null,
+            spyNav: null, spyChange: null, qqqNav: null, qqqChange: null,
+            vix: null, dollarIndex: null, us10yYield: null, us2yYield: null, tipsYield: null,
+          });
+          saved++;
+        } catch { /* dupes */ }
+      }
+      console.log(`  ✅ 回填 ${saved} 条历史数据`);
+    }
+  } catch { /* backfill 失败不阻断分析 */ }
 
   // Step 1: 数据采集 + 验证
   console.log('  📡 Step 1: 采集市场数据...');

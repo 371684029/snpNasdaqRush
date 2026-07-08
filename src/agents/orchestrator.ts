@@ -10,6 +10,8 @@ import type { TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, Directi
 import type { MarketData } from '../types/market.js';
 import type { EtfAnalysis } from '../types/etf.js';
 import { resolveOverallScore, enforceOverallScore } from '../utils/overall-score.js';
+import { applyCalibrationBias, momentumAdjustScenarios } from '../utils/calibration-adjustment.js';
+import { IndexPricesRepo } from '../db/index-prices.js';
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
 
@@ -199,6 +201,40 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
     );
     const enforcedScore = enforceOverallScore(result.overall?.score, finalScore);
 
+    // 校准偏纠偏：如果系统有统计偏（偏保守/偏乐观），纯函数强制修正
+    const calibrationBias = calibrationContext?.systematicBias ?? null;
+    const calibrateSampleSize = calibrationContext?.sampleSize ?? 0;
+    const biasCorrectedScore = applyCalibrationBias(enforcedScore, calibrationBias, calibrateSampleSize);
+
+    // 动量校准情景概率：从 DB 取近 5 日收盘价算 SPX 涨幅
+    let spxMomentumPct: number | null = null;
+    try {
+      const priceRepo = new IndexPricesRepo(db);
+      const recent = priceRepo.getRecent(10);
+      if (recent.length >= 2) {
+        const firstClose = recent.find(r => r.spxClose != null);
+        const lastClose = recent[recent.length - 1];
+        if (firstClose?.spxClose && lastClose?.spxClose && firstClose.date !== lastClose.date) {
+          spxMomentumPct = ((lastClose.spxClose - firstClose.spxClose) / firstClose.spxClose) * 100;
+        }
+      }
+    } catch { /* 动量计算失败不阻断 */ }
+
+    const scenarios = result.overall?.scenarios;
+    let adjustedScenarios = scenarios;
+    if (scenarios) {
+      const { upside, base, downside } = momentumAdjustScenarios(
+        scenarios.upside?.probability ?? 25,
+        scenarios.downside?.probability ?? 20,
+        spxMomentumPct,
+      );
+      adjustedScenarios = {
+        base: { ...scenarios.base, probability: base },
+        upside: { ...scenarios.upside, probability: upside },
+        downside: { ...scenarios.downside, probability: downside },
+      };
+    }
+
     const report: SnpAnalysisReport = {
       timestamp: new Date().toISOString(),
       marketData,
@@ -214,7 +250,8 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       tailRisks: rebuttal.tailRisks ?? [],
       overall: {
         ...result.overall,
-        score: enforcedScore,
+        score: biasCorrectedScore,
+        scenarios: adjustedScenarios,
         calibration: calibrationContext ?? {
           scoreRange: 'N/A',
           historicalAccuracy: null,
