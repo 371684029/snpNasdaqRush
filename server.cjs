@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SnpRush Docs Server — 展示 docs/ 下的分析报告
+// SnpRush Docs Server — 展示 docs/ 下的分析报告，带评分可视化
 
 const http = require('node:http');
 const fs = require('node:fs');
@@ -8,23 +8,104 @@ const path = require('node:path');
 const PORT = 81;
 const DOCS_DIR = path.join(__dirname, 'docs');
 
+// ===== 评分提取 =====
+
+function extractScore(md) {
+  const m = md.match(/评分[：:]\s*\*{0,2}(\d+)/);
+  if (!m) return null;
+  const score = parseInt(m[1], 10);
+  const dirMatch = md.match(/方向[：:]?\s*\*{0,2}(bullish|bearish|neutral|📈|📉|➡️)[^*]*/);
+  let direction = 'neutral';
+  if (dirMatch) {
+    const d = dirMatch[1];
+    if (d.includes('bullish') || d.includes('📈')) direction = 'bullish';
+    else if (d.includes('bearish') || d.includes('📉')) direction = 'bearish';
+  }
+  return { score, direction };
+}
+
+function extractDimensionScores(md) {
+  const dims = [];
+  const pattern = /(技术面|基本面|情绪面|ETF\/板块).*?(\d+)\/100/g;
+  let m;
+  while ((m = pattern.exec(md)) !== null) {
+    dims.push({ name: m[1], score: parseInt(m[2], 10) });
+  }
+  return dims;
+}
+
+function scoreBar(score) {
+  const filled = Math.round(score / 100 * 12);
+  const empty = 12 - filled;
+  const bar = '█'.repeat(filled) + '░'.repeat(empty);
+  const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+  return `<span style="color:${color};font-family:monospace">${bar}</span>`;
+}
+
+function quickAdvice(score, direction) {
+  const d = direction || (score >= 58 ? 'bullish' : score <= 42 ? 'bearish' : 'neutral');
+  if (d === 'bullish') return { emoji: '📈', label: '偏多', action: '维持仓位；回调至支撑位可小幅加仓', color: '#22c55e' };
+  if (d === 'bearish') return { emoji: '📉', label: '偏空', action: '暂不加仓，设好止损；等评分回升再入场', color: '#ef4444' };
+  return { emoji: '➡️', label: '中性', action: '维持现有仓位，按纪律执行，少择时', color: '#f59e0b' };
+}
+
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function renderIndex(files) {
-  const rows = files.map(f => {
+  // 读取每个报告提取评分
+  const reports = files.map(f => {
     const stats = fs.statSync(path.join(DOCS_DIR, f));
+    const raw = fs.readFileSync(path.join(DOCS_DIR, f), 'utf-8');
+    const scoreInfo = extractScore(raw);
+    const dims = extractDimensionScores(raw);
     const dateStr = stats.mtime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-    const sizeKB = (stats.size / 1024).toFixed(1);
     const dateLabel = f.replace('snprush-analysis-', '').replace('.md', '');
+    return { filename: f, dateStr, dateLabel, sizeKB: (stats.size / 1024).toFixed(1), scoreInfo, dims };
+  });
+
+  const rows = reports.map(r => {
+    const score = r.scoreInfo?.score;
+    const dir = r.scoreInfo?.direction;
+    const scoreHtml = score != null
+      ? `<div class="score-cell">${scoreBar(score)} <span class="score-num">${score}</span></div>`
+      : '<span class="score-na">—</span>';
+    const dirEmoji = dir === 'bullish' ? '📈' : dir === 'bearish' ? '📉' : '➡️';
     return `<tr>
       <td class="file-icon">📊</td>
-      <td class="file-name"><a href="/${f}">${esc(f)}</a><span class="date-label">${dateLabel}</span></td>
-      <td class="file-size">${sizeKB} KB</td>
-      <td class="file-time">${dateStr}</td>
+      <td class="file-name"><a href="/${r.filename}">${esc(r.dateLabel)} 分析报告</a></td>
+      <td class="file-score">${scoreHtml}</td>
+      <td class="file-dir">${score != null ? dirEmoji : ''}</td>
+      <td class="file-size">${r.sizeKB} KB</td>
+      <td class="file-time">${r.dateStr}</td>
     </tr>`;
   }).join('\n');
+
+  // 最新报告的速览信息
+  const latest = reports[0];
+  let quickGlanceHtml = '';
+  if (latest?.scoreInfo) {
+    const adv = quickAdvice(latest.scoreInfo.score, latest.scoreInfo.direction);
+    const dimTags = latest.dims.map(d =>
+      `<span class="dim-tag">${d.name} ${d.score}</span>`
+    ).join('');
+    quickGlanceHtml = `<div class="quick-glance" style="--accent:${adv.color}">
+      <div class="glance-hero">
+        <div class="glance-score">
+          <span class="glance-num">${latest.scoreInfo.score}</span>
+          <span class="glance-sub">/100</span>
+        </div>
+        <div class="glance-verdict">
+          <span class="glance-emoji">${adv.emoji}</span>
+          <span class="glance-label">${adv.label}</span>
+          <p class="glance-action">${adv.action}</p>
+        </div>
+      </div>
+      <div class="glance-dims">${dimTags}</div>
+      <p class="glance-date">📅 ${latest.dateLabel} 最新分析</p>
+    </div>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -42,25 +123,23 @@ function renderIndex(files) {
     }
     .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
     header { text-align: center; padding: 32px 0 40px; position: relative; }
-    header::after {
-      content: '';
-      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-      width: 80px; height: 2px;
-      background: linear-gradient(90deg, transparent, #3b82f6, transparent);
-    }
-    header h1 {
-      font-size: 2rem;
-      background: linear-gradient(135deg, #60a5fa, #2563eb);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      font-weight: 800; letter-spacing: 1px;
-    }
+    header::after { content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 80px; height: 2px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); }
+    header h1 { font-size: 2rem; background: linear-gradient(135deg, #60a5fa, #2563eb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; letter-spacing: 1px; }
     header .subtitle { color: #64748b; margin-top: 10px; font-size: 0.9rem; letter-spacing: 2px; }
+    .quick-glance { background: linear-gradient(135deg, #1a2332, #111827); border: 1px solid #2d3a4e; border-radius: 16px; padding: 24px 28px; margin: 0 0 36px; border-left: 4px solid var(--accent, #3b82f6); }
+    .glance-hero { display: flex; align-items: center; gap: 24px; }
+    .glance-score { text-align: center; min-width: 80px; }
+    .glance-num { font-size: 2.8rem; font-weight: 800; color: var(--accent, #60a5fa); line-height: 1; }
+    .glance-sub { font-size: 0.85rem; color: #64748b; display: block; }
+    .glance-verdict { flex: 1; }
+    .glance-emoji { font-size: 1.6rem; }
+    .glance-label { font-size: 1rem; font-weight: 600; color: #f1f5f9; margin-left: 8px; }
+    .glance-action { color: #94a3b8; margin-top: 6px; font-size: 0.9rem; line-height: 1.5; }
+    .glance-dims { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .dim-tag { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 4px 12px; font-size: 0.8rem; color: #94a3b8; }
+    .glance-date { margin-top: 12px; font-size: 0.78rem; color: #475569; }
     .stats { display: flex; justify-content: center; gap: 24px; margin: 36px 0 32px; flex-wrap: wrap; }
-    .stat-card {
-      background: linear-gradient(135deg, #1e293b, #1a2332);
-      border: 1px solid #2d3a4e; border-radius: 14px; padding: 18px 30px;
-      text-align: center; min-width: 130px; transition: transform 0.2s, border-color 0.2s;
-    }
+    .stat-card { background: linear-gradient(135deg, #1e293b, #1a2332); border: 1px solid #2d3a4e; border-radius: 14px; padding: 18px 30px; text-align: center; min-width: 130px; transition: transform 0.2s, border-color 0.2s; }
     .stat-card:hover { transform: translateY(-2px); border-color: #3b82f644; }
     .stat-card .num { font-size: 1.6rem; font-weight: 700; color: #60a5fa; }
     .stat-card .label { font-size: 0.75rem; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
@@ -70,10 +149,14 @@ function renderIndex(files) {
     td { padding: 14px 16px; border-top: 1px solid #2d3a4e; }
     tr:hover td { background: #243045; }
     td.file-icon { width: 24px; font-size: 1rem; padding-right: 0; }
-    td.file-name { min-width: 280px; }
+    td.file-name { min-width: 200px; }
     td.file-name a { color: #e2e8f0; font-weight: 500; text-decoration: none; display: block; line-height: 1.4; }
     td.file-name a:hover { color: #60a5fa; }
-    .date-label { display: block; font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+    td.file-score { min-width: 130px; }
+    .score-cell { display: flex; align-items: center; gap: 8px; }
+    .score-num { font-weight: 700; font-size: 0.95rem; }
+    .score-na { color: #475569; font-size: 0.85rem; }
+    td.file-dir { width: 30px; text-align: center; font-size: 1.1rem; }
     td.file-size, td.file-time { color: #94a3b8; font-size: 0.85rem; white-space: nowrap; }
     footer { text-align: center; margin-top: 48px; padding: 24px 0; color: #475569; font-size: 0.78rem; }
     .empty { text-align: center; padding: 60px 20px; color: #64748b; }
@@ -81,10 +164,11 @@ function renderIndex(files) {
     @media (max-width: 768px) {
       .container { padding: 24px 16px; }
       header h1 { font-size: 1.5rem; }
+      .glance-hero { flex-direction: column; align-items: flex-start; }
       .stats { gap: 12px; }
       .stat-card { padding: 14px 20px; min-width: 100px; }
-      td.file-size, th:nth-child(3) { display: none; }
-      td.file-time, th:nth-child(4) { display: none; }
+      td.file-size, th:nth-child(5) { display: none; }
+      td.file-time, th:nth-child(6) { display: none; }
     }
   </style>
 </head>
@@ -94,12 +178,13 @@ function renderIndex(files) {
       <h1>📊 SnpRush</h1>
       <p class="subtitle">标普500 & 纳斯达克 · 每日分析报告</p>
     </header>
+    ${quickGlanceHtml}
     <div class="stats">
       <div class="stat-card"><div class="num">${files.length}</div><div class="label">报告总数</div></div>
-      ${files.length > 0 ? `<div class="stat-card"><div class="num">${(files.reduce((s, f) => s + fs.statSync(path.join(DOCS_DIR, f)).size, 0) / 1024).toFixed(0)}</div><div class="label">总大小 (KB)</div></div>
-      <div class="stat-card"><div class="num">${files[files.length - 1].replace('snprush-analysis-', '').replace('.md', '')}</div><div class="label">最新报告</div></div>` : ''}
+      ${files.length > 0 ? `<div class="stat-card"><div class="num">${(reports.reduce((s, r) => s + parseFloat(r.sizeKB), 0)).toFixed(0)}</div><div class="label">总大小 (KB)</div></div>
+      <div class="stat-card"><div class="num">${latest.dateLabel}</div><div class="label">最新报告</div></div>` : ''}
     </div>
-    ${files.length > 0 ? `<div class="table-wrap"><table><thead><tr><th></th><th>文件名</th><th>大小</th><th>修改时间</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="icon">📭</div><p>暂无分析报告<br>运行 <code>node dist/index.js analysis --md</code> 生成第一份</p></div>`}
+    ${files.length > 0 ? `<div class="table-wrap"><table><thead><tr><th></th><th>报告日期</th><th>综合评分</th><th>方向</th><th>大小</th><th>生成时间</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="icon">📭</div><p>暂无分析报告<br>运行 <code>node dist/index.js analysis --md</code> 生成第一份</p></div>`}
     <footer><p>报告由 SnpRush 自动生成 · 仅供研究参考，不构成投资建议</p></footer>
   </div>
 </body>
