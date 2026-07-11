@@ -24,7 +24,10 @@ export class BaseAgent {
   /** 调用 opencode run CLI 并返回 LLM 输出文本，含自动重试 */
   private callOpencodeRun(promptText: string, system?: string, attempt: number = 1): string {
     const fullPrompt = system ? `${system}\n\n${promptText}` : promptText;
-    const modelArg = `${this.model.providerID}/${this.model.modelID}`;
+    // 如果 modelID 已含 /，直接使用；否则拼接 provider/model
+    const modelArg = this.model.modelID.includes('/')
+      ? this.model.modelID
+      : `${this.model.providerID}/${this.model.modelID}`;
 
     const cmd = `opencode run -m ${modelArg} 2>/dev/null`;
 
