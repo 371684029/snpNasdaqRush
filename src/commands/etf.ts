@@ -4,7 +4,7 @@ import { DataCollectorAgent } from '../agents/data-collector.js';
 import { EtfFundAgent } from '../agents/analysis-agents.js';
 import { header, separator, valuationMark } from '../utils/format.js';
 import { formatNow } from '../utils/time.js';
-import chalk from 'chalk';
+import Table from 'cli-table3';
 
 export async function etfCommand(): Promise<void> {
   console.log('\n💰 SnpRush ETF 分析启动...\n');
@@ -24,13 +24,19 @@ export async function etfCommand(): Promise<void> {
 
   console.log(header('💰 SnpRush ETF 对比分析', `${formatNow()} | 核心美股ETF`));
 
-  // ETF 对比
+  // ETF 对比表格 — 使用 cli-table3
   console.log(`\n  📋 ETF 对比`);
-  console.log(`  ${'代码'.padEnd(8)} ${'净值'.padEnd(10)} ${'费率'.padEnd(8)} ${'规模'.padEnd(10)} ${'股息'.padEnd(8)} 建议`);
-  console.log(separator('─', 55));
+  const table = new Table({
+    head: ['代码', '净值', '费率', '规模', '股息', '建议'],
+    colWidths: [10, 12, 10, 12, 10, 14],
+    style: { head: ['cyan'] },
+  });
+
   for (const f of analysis.comparisons) {
-    console.log(`  ${f.code.padEnd(8)} ${f.nav.toFixed(2).padEnd(10)} ${(f.feeRate + '%').padEnd(8)} ${(f.aum + '亿').padEnd(10)} ${(f.dividendYield + '%').padEnd(8)} ${f.recommendation}`);
+    table.push([f.code, f.nav.toFixed(2), `${f.feeRate}%`, `${f.aum}亿`, `${f.dividendYield}%`, f.recommendation]);
   }
+
+  console.log(table.toString());
 
   // 估值水位
   console.log(`\n  📈 估值水位: ${valuationMark(analysis.valuation.level)}`);

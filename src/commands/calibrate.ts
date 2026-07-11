@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { CalibrationRepo } from '../db/calibration.js';
 import { header, separator } from '../utils/format.js';
 import chalk from 'chalk';
+import Table from 'cli-table3';
 import type { CalibrateOptions } from '../types/config.js';
 
 export async function calibrateCommand(options: CalibrateOptions): Promise<void> {
@@ -29,23 +30,30 @@ export async function calibrateCommand(options: CalibrateOptions): Promise<void>
     return;
   }
 
+  // === cli-table3 表格 ===
   console.log(`\n  📈 评分区间校准\n`);
-  console.log('  评分区间  样本  实际涨概率  平均涨幅  偏差      系统偏差');
-  console.log(separator('─', 55));
+  const table = new Table({
+    head: ['评分区间', '样本', '实际涨概率', '平均涨幅', '偏差', '系统偏差'],
+    colWidths: [12, 8, 14, 12, 18, 12],
+    style: { head: ['cyan'] },
+  });
 
   for (const bucket of report.buckets) {
+    const upPct = `${(bucket.actualUpProbability * 100).toFixed(0)}%`;
+    const avgRet = bucket.avgReturn > 0 ? `+${bucket.avgReturn.toFixed(1)}%` : `${bucket.avgReturn.toFixed(1)}%`;
     const biasStr = bucket.systematicBias === 'optimistic'
       ? chalk.red(`偏乐观${bucket.calibrationError.toFixed(0)}%`)
       : bucket.systematicBias === 'pessimistic'
         ? chalk.green(`偏保守${bucket.calibrationError.toFixed(0)}%`)
         : chalk.cyan('校准良好');
+    const systemBiasStr = bucket.systematicBias === 'optimistic' ? chalk.red('乐观')
+      : bucket.systematicBias === 'pessimistic' ? chalk.green('保守')
+        : chalk.cyan('校准');
 
-    const systemBiasStr = bucket.systematicBias === 'optimistic' ? '乐观'
-      : bucket.systematicBias === 'pessimistic' ? '保守'
-        : '校准';
-
-    console.log(`  ${bucket.scoreRange.padEnd(8)} ${String(bucket.sampleSize).padStart(4)}  ${(bucket.actualUpProbability * 100).toFixed(0).padStart(8)}%    ${bucket.avgReturn > 0 ? '+' : ''}${bucket.avgReturn.toFixed(1).padStart(6)}%   ${biasStr}  ${systemBiasStr}`);
+    table.push([bucket.scoreRange, String(bucket.sampleSize), upPct, avgRet, biasStr, systemBiasStr]);
   }
+
+  console.log(table.toString());
 
   // --detail：按评分区间展开明细
   if (options.detail) {

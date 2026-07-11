@@ -3,7 +3,8 @@
 import { getDb } from '../db/index.js';
 import { IndexPricesRepo } from '../db/index-prices.js';
 import { ReportsRepo } from '../db/reports.js';
-import { header, separator, directionMark, changeColor, formatPrice } from '../utils/format.js';
+import { header, separator, directionMark, formatPrice } from '../utils/format.js';
+import Table from 'cli-table3';
 
 export async function historyCommand(type: 'prices' | 'reports' = 'prices', days: number = 30): Promise<void> {
   const db = getDb();
@@ -20,18 +21,21 @@ export async function historyCommand(type: 'prices' | 'reports' = 'prices', days
       return;
     }
 
-    console.log('\n  日期         SPX         IXIC        SPY     VIX');
-    console.log(separator('─', 55));
+    const table = new Table({
+      head: ['日期', 'SPX', 'IXIC', 'SPY', 'VIX'],
+      colWidths: [14, 14, 14, 10, 8],
+      style: { head: ['cyan'] },
+    });
 
     for (const r of records.slice(-20)) {
       const spx = r.spxClose ? formatPrice(r.spxClose) : 'N/A';
       const ixic = r.ixicClose ? formatPrice(r.ixicClose) : 'N/A';
       const spy = r.spyNav ? r.spyNav.toFixed(2) : 'N/A';
       const vix = r.vix ? r.vix.toFixed(2) : 'N/A';
-
-      console.log(`  ${r.date}  ${spx.padStart(12)}  ${ixic.padStart(12)}  ${spy.padStart(7)}  ${vix.padStart(6)}`);
+      table.push([r.date, spx, ixic, spy, vix]);
     }
 
+    console.log(table.toString());
     console.log(separator('═', 55));
   } else {
     const repo = new ReportsRepo(db);
@@ -45,13 +49,17 @@ export async function historyCommand(type: 'prices' | 'reports' = 'prices', days
       return;
     }
 
-    console.log('\n  日期         评分   方向     视角');
-    console.log(separator('─', 45));
+    const table = new Table({
+      head: ['日期', '评分', '方向', '视角'],
+      colWidths: [14, 10, 10, 8],
+      style: { head: ['cyan'] },
+    });
 
     for (const r of reports) {
-      console.log(`  ${r.date}  ${String(r.overallScore).padStart(3)}/100  ${directionMark(r.direction)}  ${r.horizon}`);
+      table.push([r.date, `${r.overallScore}/100`, directionMark(r.direction), r.horizon]);
     }
 
+    console.log(table.toString());
     console.log(separator('═', 45));
   }
 }

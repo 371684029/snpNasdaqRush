@@ -204,4 +204,16 @@ program
     }
   });
 
+// 优雅退出 — SIGINT / SIGTERM
+let shuttingDown = false;
+const gracefulShutdown = (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n  ⏹️  收到 ${signal}，关闭中...`);
+  try { closeDb(); } catch { /* ignore */ }
+  process.exit(0);
+};
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
 program.parse();

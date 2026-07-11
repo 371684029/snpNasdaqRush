@@ -21,33 +21,48 @@ export class BaseAgent {
     this.systemPrompt = options.systemPrompt ?? '';
   }
 
-  /** 调用 opencode run CLI 并返回 LLM 输出文本 */
-  private callOpencodeRun(promptText: string, system?: string): string {
+  /** 调用 opencode run CLI 并返回 LLM 输出文本，含自动重试 */
+  private callOpencodeRun(promptText: string, system?: string, attempt: number = 1): string {
     const fullPrompt = system ? `${system}\n\n${promptText}` : promptText;
     const modelArg = `${this.model.providerID}/${this.model.modelID}`;
 
-    // 通过 stdin 传 prompt，避免 shell 转义和命令行长度限制
     const cmd = `opencode run -m ${modelArg} 2>/dev/null`;
 
-    const result = execSync(cmd, {
-      input: fullPrompt,
-      timeout: 300_000, // 5 分钟
-      maxBuffer: 1024 * 1024 * 10, // 10MB
-      shell: '/bin/bash',
-      encoding: 'utf-8' as const,
-    });
+    try {
+      const result = execSync(cmd, {
+        input: fullPrompt,
+        timeout: 300_000,
+        maxBuffer: 1024 * 1024 * 10,
+        shell: '/bin/bash',
+        encoding: 'utf-8' as const,
+      });
 
-    const output = result || '';
+      const output = result || '';
+      const lines = output.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0)
+        .filter(l => !l.startsWith('timestamp='))
+        .filter(l => !l.startsWith('> '))
+        .filter(l => !l.startsWith('Usage:'));
 
-    // 清理输出：去掉 ANSI 转义、空行、> 提示行、timestamp 行
-    const lines = output.split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0)
-      .filter(l => !l.startsWith('timestamp='))
-      .filter(l => !l.startsWith('> '))
-      .filter(l => !l.startsWith('Usage:'));
+      return lines.join('\n');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      // 超时或进程被杀时重试，最多 3 次
+      if (attempt < 3 && (errMsg.includes('ETIMEDOUT') || errMsg.includes('SIGTERM') || errMsg.includes('killed') || errMsg.includes('exit status') || this.isTransient(errMsg))) {
+        const delay = Math.min(attempt * 2000, 8000);
+        console.error(`  ⚠️ ${this.name} LLM 调用失败 (尝试 ${attempt}/3): ${errMsg.slice(0, 80)} — ${delay / 1000}s 后重试...`);
+        const waitUntil = Date.now() + delay;
+        while (Date.now() < waitUntil) { /* spin */ }
+        return this.callOpencodeRun(promptText, system, attempt + 1);
+      }
+      throw err;
+    }
+  }
 
-    return lines.join('\n');
+  /** 判断是否为可重试的瞬时错误 */
+  private isTransient(msg: string): boolean {
+    return /ECONNREFUSED|ECONNRESET|socket hang|timeout|502|503|504|429/i.test(msg);
   }
 
   /** 发送 prompt，获取文本回复 */

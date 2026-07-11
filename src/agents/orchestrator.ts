@@ -12,6 +12,7 @@ import type { EtfAnalysis } from '../types/etf.js';
 import { resolveOverallScore, enforceOverallScore } from '../utils/overall-score.js';
 import { applyCalibrationBias, momentumAdjustScenarios } from '../utils/calibration-adjustment.js';
 import { IndexPricesRepo } from '../db/index-prices.js';
+import { computeHistoricalScenarioProbs, formatScenarioProbLine } from '../utils/scenario-probability.js';
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
 
@@ -206,10 +207,11 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
     const calibrateSampleSize = calibrationContext?.sampleSize ?? 0;
     const biasCorrectedScore = applyCalibrationBias(enforcedScore, calibrationBias, calibrateSampleSize);
 
-    // 动量校准情景概率：从 DB 取近 5 日收盘价算 SPX 涨幅
+    // 动量校准情景概率：从 DB 取近 10 日收盘价算 SPX 涨幅
     let spxMomentumPct: number | null = null;
+    let priceRepo: IndexPricesRepo | null = null;
     try {
-      const priceRepo = new IndexPricesRepo(db);
+      priceRepo = new IndexPricesRepo(db);
       const recent = priceRepo.getRecent(10);
       if (recent.length >= 2) {
         const firstClose = recent.find(r => r.spxClose != null);
@@ -233,6 +235,21 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
         upside: { ...scenarios.upside, probability: upside },
         downside: { ...scenarios.downside, probability: downside },
       };
+
+      // 历史分布概率覆盖 — 对齐 goldRush 的统计化情景概率
+      try {
+        const historyPrices = priceRepo?.getRecent(120);
+        if (historyPrices && historyPrices.length > 5) {
+          const histProbs = computeHistoricalScenarioProbs(historyPrices);
+          if (histProbs.source === 'historical') {
+            adjustedScenarios = {
+              base: { ...scenarios.base, probability: histProbs.base },
+              upside: { ...scenarios.upside, probability: histProbs.upside },
+              downside: { ...scenarios.downside, probability: histProbs.downside },
+            };
+          }
+        }
+      } catch { /* 历史分布计算失败不阻断 */ }
     }
 
     const report: SnpAnalysisReport = {

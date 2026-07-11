@@ -5,16 +5,21 @@ import { ValidatorAgent } from '../agents/validator.js';
 import { TechnicalAgent, FundamentalAgent, SentimentAgent, EtfFundAgent } from '../agents/analysis-agents.js';
 import { RebuttalAgent } from '../agents/rebuttal.js';
 import { OrchestratorAgent } from '../agents/orchestrator.js';
-import { header, separator, directionMark, scoreBar, changeColor, riskLevel, valuationMark } from '../utils/format.js';
+import { header, separator, directionMark, scoreBar, elapsed } from '../utils/format.js';
 import { formatNow } from '../utils/time.js';
 import { IndexPricesRepo } from '../db/index-prices.js';
 import { getDb } from '../db/index.js';
 import { fetchYahooIndexDailyCloses } from '../data/yahoo-index-history.js';
+import { buildScoreBreakdown, formatScoreBreakdownConsole } from '../utils/score-breakdown.js';
 import type { Horizon } from '../types/config.js';
 import type { SnpAnalysisReport } from '../types/analysis.js';
 
 export async function analysisCommand(options: { horizon: Horizon; json: boolean; save: boolean; md: boolean }): Promise<void> {
   console.log('\n🔬 SnpRush 综合分析启动...\n');
+
+  const stepTimes: { step: string; ms: number }[] = [];
+  const tick = (label: string) => { stepTimes.push({ step: label, ms: Date.now() }); };
+  tick('start');
 
   // Step 0: 自动回填历史数据（确保校准有样本）
   try {
@@ -55,6 +60,7 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
 
   const validator = new ValidatorAgent();
   const validation = await validator.validate(marketData);
+  tick('data');
   console.log(`  ✅ 数据采集完成 (置信度: ${validation.overallConfidence}%)`);
 
   // Step 2: 四维度分析（串行执行，避免 LLM 并发争抢内存）
@@ -72,6 +78,7 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   console.log('  📊 分析中: ETF/板块面...');
   const etf = await new EtfFundAgent().analyze(marketData);
   console.log(`  ✅ ETF/板块面 ${etf.valuation.level}`);
+  tick('dims');
 
   // Step 2.5: 强制反驳
   console.log('  ⚔️ Step 2.5: 强制反驳...');
@@ -84,6 +91,14 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   const orchestrator = new OrchestratorAgent();
   const report = await orchestrator.orchestrate(marketData, technical, fundamental, sentiment, etf, rebuttal, options.horizon);
   console.log('  ✅ 编排完成');
+  tick('done');
+
+  // 步骤耗时摘要
+  const startMs = stepTimes.find(t => t.step === 'start')?.ms ?? 0;
+  const dataMs = stepTimes.find(t => t.step === 'data')?.ms ?? startMs;
+  const dimsMs = stepTimes.find(t => t.step === 'dims')?.ms ?? startMs;
+  const doneMs = stepTimes.find(t => t.step === 'done')?.ms ?? startMs;
+  console.log(`\n  ⏱️ 耗时: 数据${elapsed(dataMs - startMs)} + 分析${elapsed(dimsMs - dataMs)} + 编排${elapsed(doneMs - dimsMs)} → 总计${elapsed(doneMs - startMs)}`);
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
@@ -124,6 +139,13 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
   if (overall?.score) {
     console.log(`  ${scoreBar(overall.score)}`);
   }
+
+  // 评分链路展示 — 对齐 goldRush 的透明评分体系
+  try {
+    const bd = buildScoreBreakdown(technical, fundamental, sentiment, rebuttal);
+    const breakdownStr = formatScoreBreakdownConsole(bd);
+    console.log(`\n${breakdownStr}`);
+  } catch { /* breakdown 展示失败不阻断 */ }
 
   if (overall?.calibration?.historicalAccuracy !== null && overall?.calibration?.historicalAccuracy !== undefined) {
     console.log(`  📊 校准参考: ${overall.calibration.scoreRange}区间历史准确率${Math.round(overall.calibration.historicalAccuracy * 100)}% (${overall.calibration.systematicBias})`);

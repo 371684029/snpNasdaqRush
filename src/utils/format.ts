@@ -45,12 +45,21 @@ export function directionMark(direction: string): string {
   }
 }
 
-/** 评分条 */
+/** 评分条 — 带颜色渐变: ≥70绿色, 40-69黄色, <40红色 */
 export function scoreBar(score: number, width: number = 20): string {
   const filled = Math.round(score / 100 * width);
   const empty = width - filled;
   const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  return `${bar} ${score}/100`;
+  const coloredBar = score >= 70 ? chalk.green(bar) : score >= 40 ? chalk.yellow(bar) : chalk.red(bar);
+  const scoreLabel = score >= 70 ? chalk.green(`${score}/100`) : score >= 40 ? chalk.yellow(`${score}/100`) : chalk.red(`${score}/100`);
+  return `${coloredBar} ${scoreLabel}`;
+}
+
+/** 耗时显示 */
+export function elapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
 
 /** 格式化金额 */
