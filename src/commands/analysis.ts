@@ -11,6 +11,12 @@ import { IndexPricesRepo } from '../db/index-prices.js';
 import { getDb } from '../db/index.js';
 import { fetchYahooIndexDailyCloses } from '../data/yahoo-index-history.js';
 import { buildScoreBreakdown, formatScoreBreakdownConsole } from '../utils/score-breakdown.js';
+import { buildJudgeVerdict, formatJudgeVerdictConsole } from '../utils/judge-verdict.js';
+import { detectMacroRegime, formatMacroRegimeLine } from '../utils/macro-regime.js';
+import { buildLongTermOutlook, formatLongTermOutlookConsole } from '../utils/long-term-outlook.js';
+import { matchCausalRules, formatCausalChainsConsole, type CausalContext } from '../utils/causal-rules.js';
+import { buildRecentReportsContext } from '../utils/report-history-context.js';
+import { scoreToAdvice, checkConsistency, type PlainAdvice } from '../utils/plain-advice.js';
 import type { Horizon } from '../types/config.js';
 import type { SnpAnalysisReport } from '../types/analysis.js';
 
@@ -86,10 +92,81 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   const rebuttal = await rebuttalAgent.rebut(technical, fundamental, sentiment, etf, marketData);
   console.log(`  ✅ 反驳完成 (看空力度: ${rebuttal.bearScore}/100, 强度: ${rebuttal.rebuttalStrength})`);
 
-  // Step 3: 综合编排
+  // === 本地规则层（无 LLM） ===
+  // 宏观阶段检测
+  const macroRegime = detectMacroRegime(marketData);
+
+  // 因果链匹配
+  const causalCtx: CausalContext = {
+    dollarDirection: (marketData.dollarIndex?.value?.change ?? 0) > 0.3 ? 'up' : (marketData.dollarIndex?.value?.change ?? 0) < -0.3 ? 'down' : 'flat',
+    dollarMagnitude: Math.abs(marketData.dollarIndex?.value?.change ?? 0),
+    yield10y: marketData.usTreasury?.yield10y?.value ?? null,
+    yield2y: marketData.usTreasury?.yield2y?.value ?? null,
+    vix: marketData.vix?.value?.value ?? null,
+    spxChange: marketData.spx?.price?.change ?? null,
+    macroRegime: macroRegime?.tag ?? null,
+  };
+  const causalChains = matchCausalRules(causalCtx);
+
+  // 近期报告历史
+  const reportsContext = buildRecentReportsContext();
+
+  // 研判裁决（纯规则，不依赖 LLM）
+  const judgeBreakdown = buildScoreBreakdown(technical, fundamental, sentiment, rebuttal);
+  const judgeVerdict = buildJudgeVerdict(technical, fundamental, sentiment, rebuttal, judgeBreakdown);
+
+  // 长期方向预期
+  const outlookInput = {
+    technical, fundamental, sentiment, rebuttal,
+    overallScore: Math.round((technical.score + fundamental.score + sentiment.score) / 3),
+    overallDirection: (technical.score + fundamental.score + sentiment.score) / 3 >= 58 ? 'bullish' as const
+      : (technical.score + fundamental.score + sentiment.score) / 3 <= 42 ? 'bearish' as const
+        : 'neutral' as const,
+    macroRegime: macroRegime ?? { tag: 'unknown', label: '未检测', description: '', direction: 'neutral' as const },
+  };
+  const longTermOutlook = buildLongTermOutlook(outlookInput);
+
+  // 自然语言建议
+  const advice = scoreToAdvice(Math.round((technical.score + fundamental.score + sentiment.score) / 3));
+  const consistency = checkConsistency(
+    { score: technical.score, direction: technical.direction },
+    { score: fundamental.score, direction: fundamental.direction },
+    { score: sentiment.score, direction: sentiment.direction },
+  );
+
+  // Step 3: 综合编排（含 try/catch fallback）
   console.log('  🎯 Step 3: 综合编排...');
   const orchestrator = new OrchestratorAgent();
-  const report = await orchestrator.orchestrate(marketData, technical, fundamental, sentiment, etf, rebuttal, options.horizon);
+  let report: SnpAnalysisReport;
+  try {
+    report = await orchestrator.orchestrate(marketData, technical, fundamental, sentiment, etf, rebuttal, options.horizon);
+  } catch (err) {
+    console.error('  ⚠️ 编排失败，使用本地 fallback:');
+    console.error('    ' + (err instanceof Error ? err.message : String(err)));
+    // 构建 fallback report — 只用本地计算，不依赖 LLM
+    const avg = Math.round((technical.score + fundamental.score + sentiment.score) / 3);
+    report = {
+      timestamp: new Date().toISOString(),
+      marketData,
+      dataQuality: { overallConfidence: 80, warnings: [] },
+      technical, fundamental, sentiment,
+      etf,
+      rebuttal,
+      tailRisks: rebuttal.tailRisks ?? [],
+      overall: {
+        score: avg,
+        direction: avg >= 58 ? 'bullish' : avg <= 42 ? 'bearish' : 'neutral',
+        scenarios: {
+          base: { probability: 45, description: 'LLM 编排失败，基准情景采用均值估算', indexPrice: 'N/A', nasdaqPrice: 'N/A', action: '等待下一次分析', confidence: 'low' },
+          upside: { probability: 30, description: '上行取决于 Q3 财报', indexPrice: 'N/A', nasdaqPrice: 'N/A', trigger: '科技财报超预期', action: '观望', confidence: 'low' },
+          downside: { probability: 25, description: '下行取决于宏观恶化', indexPrice: 'N/A', nasdaqPrice: 'N/A', trigger: 'CPI/PCE 超预期', action: '观望', confidence: 'low' },
+        },
+        shortTerm: { horizon: 'short-term', action: '观望（LLM 编排失败）', spxEntryZone: 'N/A', ixicEntryZone: 'N/A', target: 'N/A', stopLoss: 'N/A', recommendedProduct: '等待下次分析', riskWarning: 'LLM 编排失败，策略不可用' },
+        midTerm: { horizon: 'medium-term', investAdvice: { dipInvest: 'pause', positionAdjust: 'hold', recommendedFund: '等待' }, keyLevels: { spxSupportZone: 'N/A', spxResistanceZone: 'N/A', ixicSupportZone: 'N/A', ixicResistanceZone: 'N/A' }, assetAllocation: 'N/A', riskWarning: 'LLM 编排失败' },
+        calibration: { scoreRange: 'N/A', historicalAccuracy: null, systematicBias: 'LLM 编排失败', sampleSize: 0 },
+      },
+    };
+  }
   console.log('  ✅ 编排完成');
   tick('done');
 
@@ -103,7 +180,7 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
-    printReport(report, options.horizon);
+    printReport(report, options.horizon, advice, consistency, macroRegime, causalChains, judgeVerdict, longTermOutlook);
   }
 
   if (options.save) {
@@ -129,7 +206,16 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   await orchestrator.cleanup();
 }
 
-function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
+function printReport(
+  report: SnpAnalysisReport,
+  horizon: Horizon,
+  advice: PlainAdvice,
+  consistency: ReturnType<typeof checkConsistency>,
+  macroRegime: ReturnType<typeof detectMacroRegime>,
+  causalChains: ReturnType<typeof matchCausalRules>,
+  judgeVerdict: ReturnType<typeof buildJudgeVerdict>,
+  longTermOutlook: ReturnType<typeof buildLongTermOutlook>,
+): void {
   const { overall, technical, fundamental, sentiment, etf: etfAnalysis, rebuttal, tailRisks } = report;
 
   console.log(header('🎯 SnpRush 综合分析报告', formatNow()));
@@ -146,6 +232,28 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
     const breakdownStr = formatScoreBreakdownConsole(bd);
     console.log(`\n${breakdownStr}`);
   } catch { /* breakdown 展示失败不阻断 */ }
+
+  // 自然语言建议
+  if (advice) {
+    console.log(`  💡 ${advice.emoji} ${advice.headline}: ${advice.action}`);
+  }
+  // 一致性检查
+  if (consistency && consistency.strength !== 'weak') {
+    console.log(`  🔍 维度一致性: ${consistency.consensus === 'bullish' ? '偏多' : consistency.consensus === 'bearish' ? '偏空' : '分歧'} (${consistency.agreedCount}/3 一致)`);
+    if (consistency.dissenters.length > 0) console.log(`    分歧维度: ${consistency.dissenters.join('、')}`);
+  }
+
+  // 宏观阶段
+  if (macroRegime) {
+    console.log(`\n${formatMacroRegimeLine(macroRegime)}`);
+  }
+
+  // 因果链
+  const causalText = formatCausalChainsConsole(causalChains);
+  if (causalText) console.log(causalText);
+
+  // 研判裁决
+  console.log(`\n${formatJudgeVerdictConsole(judgeVerdict)}`);
 
   if (overall?.calibration?.historicalAccuracy !== null && overall?.calibration?.historicalAccuracy !== undefined) {
     console.log(`  📊 校准参考: ${overall.calibration.scoreRange}区间历史准确率${Math.round(overall.calibration.historicalAccuracy * 100)}% (${overall.calibration.systematicBias})`);
@@ -214,6 +322,11 @@ function printReport(report: SnpAnalysisReport, horizon: Horizon): void {
     }
     const noRisk = tailRiskList.reduce((p, r) => p * (1 - r.probability / 100), 1);
     console.log(`  综合尾部风险指数: ${((1 - noRisk) * 100).toFixed(1)}%`);
+  }
+
+  // 长期方向预期
+  if (longTermOutlook) {
+    console.log(`\n${formatLongTermOutlookConsole(longTermOutlook)}`);
   }
 
   console.log(separator('═', 55));
