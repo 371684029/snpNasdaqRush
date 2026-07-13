@@ -82,14 +82,14 @@ export interface SnpRushConfig {
 /** 默认配置 */
 export const DEFAULT_CONFIG: SnpRushConfig = {
   models: {
-    dataCollector: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    validator: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    technical: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    fundamental: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    sentiment: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    etf: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    rebuttal: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
-    orchestrator: { providerID: 'opencode-go', modelID: 'opencode-go/dsv4-pro' },
+    dataCollector: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    validator: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    technical: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    fundamental: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    sentiment: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    etf: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    rebuttal: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
+    orchestrator: { providerID: 'opencode-go', modelID: 'deepseek-v4-pro' },
   },
   search: {
     tavilyApiKey: '',
