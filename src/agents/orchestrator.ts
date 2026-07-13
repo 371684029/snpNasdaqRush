@@ -12,7 +12,14 @@ import type { EtfAnalysis } from '../types/etf.js';
 import { resolveOverallScore, enforceOverallScore } from '../utils/overall-score.js';
 import { applyCalibrationBias, momentumAdjustScenarios } from '../utils/calibration-adjustment.js';
 import { IndexPricesRepo } from '../db/index-prices.js';
-import { computeHistoricalScenarioProbs, formatScenarioProbLine } from '../utils/scenario-probability.js';
+import { computeHistoricalScenarioProbs } from '../utils/scenario-probability.js';
+import { countConsecutiveDirectionDays } from '../utils/consecutive-direction.js';
+
+export interface OrchestrateContext {
+  causalChainsText?: string;
+  reportsContext?: string;
+  macroRegimeLine?: string;
+}
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
 
@@ -89,6 +96,7 @@ export class OrchestratorAgent extends BaseAgent {
     etf: EtfAnalysis,
     rebuttal: RebuttalAnalysis,
     horizon: 'short' | 'mid' | 'all' = 'all',
+    ctx?: OrchestrateContext,
   ): Promise<SnpAnalysisReport> {
     const db = getDb();
     const calibrationRepo = new CalibrationRepo(db);
@@ -179,6 +187,15 @@ ${sentiment.keyPoints.join('; ')}
 
 ## 历史校准
 ${calibrationText}
+
+${ctx?.macroRegimeLine ? `## 宏观阶段\n${ctx.macroRegimeLine}\n` : ''}\
+${ctx?.causalChainsText ? `## 因果链参考\n${ctx.causalChainsText}\n` : ''}\
+${ctx?.reportsContext ? `## 近期分析趋势\n${ctx.reportsContext}\n` : ''}\
+## 评分规则
+1. 你的自评分仅作参考，会被公式覆盖，无需过度纠结自评分的精确值
+2. 重点放在情景分析质量和操作建议的具体性上
+3. 三情景概率之和必须精确等于100%
+4. 如果反驳强度≥moderate，必须在风险提示中体现看空论据
 
 ## 输出视角
 ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视角' : '双视角（短期+中长期）'}
@@ -307,7 +324,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
         vixLevel: report.marketData?.vix?.value?.value ?? 0,
         fedStance: 'neutral',
         momentumDirection: report.overall.direction === 'bullish' ? 'up' : report.overall.direction === 'bearish' ? 'down' : 'flat',
-        consecutiveDays: 0,
+        consecutiveDays: countConsecutiveDirectionDays(report.overall.direction),
       });
     } catch (err) {
       console.error('保存报告失败:', err);

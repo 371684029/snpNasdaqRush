@@ -69,21 +69,21 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   tick('data');
   console.log(`  ✅ 数据采集完成 (置信度: ${validation.overallConfidence}%)`);
 
-  // Step 2: 四维度分析（串行执行，避免 LLM 并发争抢内存）
+  // Step 2: 四维度分析（技术+基本面并行，然后情绪+ETF并行）
   console.log('  🧠 Step 2: 四维度分析...');
-  console.log('  📊 分析中: 技术面...');
-  const technical = await new TechnicalAgent().analyze(marketData);
-  console.log(`  ✅ 技术面 ${technical.score}/100`);
-  console.log('  📊 分析中: 基本面...');
-  const fundamental = await new FundamentalAgent().analyze(marketData);
-  console.log(`  ✅ 基本面 ${fundamental.score}/100`);
+  console.log('  📊 分析中: 技术面 + 基本面（并行）...');
+  const [technical, fundamental] = await Promise.all([
+    new TechnicalAgent().analyze(marketData),
+    new FundamentalAgent().analyze(marketData),
+  ]);
+  console.log(`  ✅ 技术面 ${technical.score}/100 | 基本面 ${fundamental.score}/100`);
 
-  console.log('  📊 分析中: 情绪面...');
-  const sentiment = await new SentimentAgent().analyze(marketData);
-  console.log(`  ✅ 情绪面 ${sentiment.score}/100`);
-  console.log('  📊 分析中: ETF/板块面...');
-  const etf = await new EtfFundAgent().analyze(marketData);
-  console.log(`  ✅ ETF/板块面 ${etf.valuation.level}`);
+  console.log('  📊 分析中: 情绪面 + ETF/板块面（并行）...');
+  const [sentiment, etf] = await Promise.all([
+    new SentimentAgent().analyze(marketData),
+    new EtfFundAgent().analyze(marketData),
+  ]);
+  console.log(`  ✅ 情绪面 ${sentiment.score}/100 | ETF/板块面 ${etf.valuation.level}`);
   tick('dims');
 
   // Step 2.5: 强制反驳
@@ -137,9 +137,14 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   // Step 3: 综合编排（含 try/catch fallback）
   console.log('  🎯 Step 3: 综合编排...');
   const orchestrator = new OrchestratorAgent();
+  const orchCtx = {
+    causalChainsText: causalChains.length ? causalChains.map((r: { label: string }) => `- ${r.label}`).join('\n') : undefined,
+    reportsContext: reportsContext || undefined,
+    macroRegimeLine: macroRegime ? formatMacroRegimeLine(macroRegime) : undefined,
+  };
   let report: SnpAnalysisReport;
   try {
-    report = await orchestrator.orchestrate(marketData, technical, fundamental, sentiment, etf, rebuttal, options.horizon);
+    report = await orchestrator.orchestrate(marketData, technical, fundamental, sentiment, etf, rebuttal, options.horizon, orchCtx);
   } catch (err) {
     console.error('  ⚠️ 编排失败，使用本地 fallback:');
     console.error('    ' + (err instanceof Error ? err.message : String(err)));
@@ -176,6 +181,12 @@ export async function analysisCommand(options: { horizon: Horizon; json: boolean
   const dimsMs = stepTimes.find(t => t.step === 'dims')?.ms ?? startMs;
   const doneMs = stepTimes.find(t => t.step === 'done')?.ms ?? startMs;
   console.log(`\n  ⏱️ 耗时: 数据${elapsed(dataMs - startMs)} + 分析${elapsed(dimsMs - dataMs)} + 编排${elapsed(doneMs - dimsMs)} → 总计${elapsed(doneMs - startMs)}`);
+
+  // 覆盖数据质量（来自实际验证）
+  report.dataQuality = {
+    overallConfidence: validation.overallConfidence,
+    warnings: validation.warnings,
+  };
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
