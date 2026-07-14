@@ -225,7 +225,7 @@ function renderArticle(mdFilename, rawMarkdown) {
   .topbar{position:sticky;top:0;z-index:100;background:rgba(11,17,32,.88);backdrop-filter:blur(16px);border-bottom:1px solid #1e293b;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between}
   .topbar a{color:#94a3b8;text-decoration:none;font-size:.88rem;display:flex;align-items:center;gap:6px;transition:color .2s}
   .topbar a:hover{color:#60a5fa}.topbar .logo{font-weight:700;font-size:1rem;color:#60a5fa}.topbar .report-date{color:#64748b;font-size:.82rem}
-  .article-layout{max-width:1100px;margin:0 auto;padding:32px 24px 80px;display:flex;gap:36px;align-items:flex-start}
+  .article-layout{max-width:1100px;margin:0 auto;padding:24px 24px 80px;display:flex;gap:36px;align-items:flex-start}
   /* 侧栏 */
   .sidebar{width:200px;flex-shrink:0;position:sticky;top:80px}
   .sb-block{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #1e293b}
@@ -237,8 +237,9 @@ function renderArticle(mdFilename, rawMarkdown) {
   .score-ring-inner{width:60px;height:60px;border-radius:50%;background:#0b1120;display:flex;flex-direction:column;align-items:center;justify-content:center}
   .score-ring-num{font-size:1.3rem;font-weight:800;color:#f1f5f9;line-height:1}.score-ring-sub{font-size:.6rem;color:#64748b}
   /* 预测仪表盘 */
-  .pred-dashboard{margin-bottom:28px}.pred-hero{display:grid;grid-template-columns:120px 1fr auto;gap:24px;align-items:start;background:linear-gradient(135deg,#1a2744,#1e293b);border:1px solid #334155;border-left:4px solid var(--pred-color,#f59e0b);border-radius:16px;padding:24px 28px}
-  .pred-score-num{font-size:3rem;font-weight:800;color:#f8fafc;line-height:1}
+  .pred-dashboard{margin-bottom:24px}
+  .pred-hero{display:grid;grid-template-columns:120px 1fr auto;gap:24px;align-items:start;background:linear-gradient(135deg,#1a2744,#1e293b);border:1px solid #334155;border-left:4px solid var(--pred-color,#f59e0b);border-radius:16px;padding:24px 28px}
+  .pred-score-num{font-size:3.2rem;font-weight:800;color:#f8fafc;line-height:1}
   .pred-score-sub{font-size:.72rem;color:#64748b;margin-top:4px}
   .pred-score-meter{height:6px;background:#0f172a;border-radius:3px;margin-top:10px;overflow:hidden}
   .pred-score-fill{height:100%;border-radius:3px;transition:width .6s}
@@ -261,15 +262,15 @@ function renderArticle(mdFilename, rawMarkdown) {
   .sc-card.sc-up .sc-fill{background:linear-gradient(90deg,#16a34a,#22c55e)}.sc-card.sc-down .sc-fill{background:linear-gradient(90deg,#dc2626,#ef4444)}
   .sc-action{font-size:.78rem;color:#94a3b8;line-height:1.45}
   /* 折叠工具栏 */
-  .collapse-toolbar{display:flex;gap:8px;margin-bottom:16px;justify-content:center;flex-wrap:wrap}
-  .collapse-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:6px 12px;font-size:.78rem;cursor:pointer;transition:border-color .2s,color .2s}
+  .collapse-toolbar{display:flex;gap:8px;margin-bottom:12px;justify-content:center;flex-wrap:wrap}
+  .collapse-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;padding:6px 14px;font-size:.78rem;cursor:pointer;transition:border-color .2s,color .2s}
   .collapse-btn:hover{border-color:#f59e0b55;color:#e2e8f0}
   /* 分节折叠 */
-  .md-section{margin:12px 0 16px;background:#0f172a;border:1px solid #1e293b;border-radius:12px;overflow:hidden;scroll-margin-top:80px}
+  .md-section{margin:10px 0 14px;background:#0f172a;border:1px solid #1e293b;border-radius:12px;overflow:hidden;scroll-margin-top:80px}
   .md-section-summary{display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none;user-select:none;padding:12px 14px;background:#131c2e;border-left:3px solid #f59e0b;color:#f1f5f9;font-weight:600;font-size:.98rem}
   .md-section-summary::-webkit-details-marker{display:none}
   .md-section[data-sec-kind="short-strategy"] .md-section-summary,
-  .md-section[data-sec-kind="mid-strategy"] .md-section-summary{border-left-color:#22c55e}
+  .md-section[data-sec-kind="mid-strategy"] .md-section-summary{border-left-color:#22c55e;background:#132c1e}
   .md-section[data-sec-kind="scenarios"] .md-section-summary{border-left-color:#22c55e}
   .md-section[data-sec-kind="rebuttal"] .md-section-summary,
   .md-section[data-sec-kind="tail-risk"] .md-section-summary{border-left-color:#ef4444}
@@ -278,9 +279,7 @@ function renderArticle(mdFilename, rawMarkdown) {
   .md-section-body{padding:4px 16px 16px}
   /* 内容区 */
   .article-main{flex:1;min-width:0}
-  #content{font-size:1rem}.article-header{text-align:center;padding:16px 0 24px;margin-bottom:24px;border-bottom:1px solid #1e293b}
-  .article-header h1{font-size:1.4rem;color:#f1f5f9;font-weight:700}.article-header .meta{margin-top:8px;color:#64748b;font-size:.82rem}
-  #content h2{font-size:1.15rem;color:#f1f5f9;margin:20px 0 12px;padding:10px 14px;background:#131c2e;border-radius:10px;border-left:3px solid #f59e0b;scroll-margin-top:80px}
+  #content{font-size:.95rem}#content h2{font-size:1.15rem;color:#f1f5f9;margin:20px 0 12px;padding:10px 14px;background:#131c2e;border-radius:10px;border-left:3px solid #f59e0b;scroll-margin-top:80px}
   #content h3{font-size:1.05rem;color:#e2e8f0;margin:18px 0 8px}#content p{margin:10px 0}#content strong{color:#f1f5f9;font-weight:600}
   #content table{width:100%;border-collapse:collapse;margin:16px 0;background:#131c2e;border-radius:10px;overflow:hidden;font-size:.9rem}
   #content th{background:#1a2332;padding:10px 14px;text-align:left;color:#94a3b8;font-weight:600;font-size:.8rem;text-transform:uppercase}#content td{padding:10px 14px;border-top:1px solid #1e293b}
@@ -304,37 +303,31 @@ function renderArticle(mdFilename, rawMarkdown) {
   <main class="article-main">
     ${dashboardHtml}
     <div class="collapse-toolbar">
-      <button type="button" class="collapse-btn" id="btn-expand-all">📖 全部展开</button>
-      <button type="button" class="collapse-btn" id="btn-collapse-all">📕 全部收起</button>
-      <button type="button" class="collapse-btn" id="btn-reset-collapse">🔄 恢复默认</button>
+      <button type="button" class="collapse-btn" id="btn-expand-all">📖 展开全部</button>
+      <button type="button" class="collapse-btn" id="btn-collapse-all">📕 收起全部</button>
+      <button type="button" class="collapse-btn" id="btn-reset-collapse">🔄 默认（策略展开）</button>
     </div>
     <div id="content"></div>
     <div class="footer-meta">报告由 SnpRush 自动生成 · 仅供研究参考，不构成投资建议</div>
   </main>
 </div>
 <script>
-const md = \`${esc(mdContent(rawMarkdown))}\`;
+const mdRaw = \`${esc(mdContent(rawMarkdown))}\`;
+// 去掉仪表盘已展示的重复板块
+const mdClean = mdRaw.replace(/^## 📊 评分构成[\\s\\S]*?(?=\\n## )/m,'').replace(/^## 🎯 综合研判[\\s\\S]*?(?=\\n## )/m,'');
 const contentEl = document.getElementById('content');
-contentEl.innerHTML = marked.parse(md);
+contentEl.innerHTML = marked.parse(mdClean);
 
-// === 分节折叠（客户端） ===
-const OPEN_KEYS = ['短期策略','中长期策略','情景分析'];
-const CLOSE_KEYS = ['强制反驳','尾部风险','长期方向','四维度','裁决摘要','历史相似','评分构成','综合研判'];
-function secKind(title){const t=String(title||'');if(t.includes('强制反驳'))return'rebuttal';if(t.includes('情景分析'))return'scenarios';if(t.includes('短期策略'))return'short-strategy';if(t.includes('中长期策略'))return'mid-strategy';if(t.includes('尾部风险'))return'tail-risk';if(t.includes('四维度'))return'dimensions';return'other'}
-function shouldOpen(t){return OPEN_KEYS.some(k=>t.includes(k))?!CLOSE_KEYS.some(k=>t.includes(k)):false}
+// === 分节折叠 — 策略/情景默认展开，其余默认收起 ===
+const ALWAYS_OPEN = ['短期策略','中长期策略'];
+const secKind = t => {t=String(t||'');if(t.includes('反驳'))return'rebuttal';if(t.includes('情景'))return'scenarios';if(t.includes('短期策略'))return'short-strategy';if(t.includes('中长期策略'))return'mid-strategy';if(t.includes('尾部风险'))return'tail-risk';if(t.includes('维度'))return'dimensions';return'other'};
+const shouldOpen = t => ALWAYS_OPEN.some(k=>t.includes(k));
 
 const h2s = contentEl.querySelectorAll('h2');
-h2s.forEach((h2,i)=>{
-  const title = h2.textContent.trim();
-  const kind = secKind(title);
-  const open = shouldOpen(title);
-  const id = 'sec-'+i;
-  h2.setAttribute('id',id);
-  // 收集直到下一个 h2 的兄弟节点
-  const bodyEls = [];
-  let el = h2.nextElementSibling;
-  while(el && el.tagName!=='H2'){bodyEls.push(el.cloneNode(true));const n=el.nextElementSibling;el=n}
-  // 构建 details
+h2s.forEach((h2,i) => {
+  const title = h2.textContent.trim(), kind = secKind(title), open = shouldOpen(title), id = 'sec-'+i;
+  const bodyEls = []; let el = h2.nextElementSibling;
+  while(el && el.tagName!=='H2'){bodyEls.push(el.cloneNode(true));el=el.nextElementSibling}
   const d = document.createElement('details');
   d.className='md-section';d.setAttribute('data-sec-kind',kind);d.id=id;
   if(open)d.open=true;
@@ -342,30 +335,25 @@ h2s.forEach((h2,i)=>{
   sum.className='md-section-summary';
   sum.innerHTML='<span class="md-sec-title">'+title+'</span><span class="md-sec-hint" aria-hidden="true"></span>';
   d.appendChild(sum);
-  const body = document.createElement('div');
-  body.className='md-section-body';
+  const body = document.createElement('div');body.className='md-section-body';
   body.appendChild(h2.cloneNode(true));
   bodyEls.forEach(b=>body.appendChild(b));
   d.appendChild(body);
-  // 替换原 h2 + 兄弟
   h2.insertAdjacentElement('beforebegin',d);
-  // 删除原 h2 和兄弟（标记删除）
   h2.dataset.removed='1';
   let rm = h2.nextElementSibling;
   while(rm && rm.tagName!=='H2'){rm.dataset.removed='1';rm=rm.nextElementSibling}
 });
-// 统一删除
 document.querySelectorAll('[data-removed="1"]').forEach(e=>e.remove());
 
 // === 工具栏 ===
-const KEY='snprush-collapse-pref';
-const sections=()=>Array.from(document.querySelectorAll('.md-section'));
-function setAll(open){sections().forEach(d=>d.open=open);try{localStorage.setItem(KEY,open?'all-open':'all-closed')}catch(_){}}
-function resetDefault(){sections().forEach(d=>{const k=d.getAttribute('data-sec-kind')||'';d.open=['short-strategy','mid-strategy','scenarios'].includes(k)});try{localStorage.removeItem(KEY)}catch(_){}}
+const KEY='snprush-collapse',secs=()=>document.querySelectorAll('.md-section');
+function setAll(o){secs().forEach(d=>d.open=o);try{localStorage.setItem(KEY,o?'all-open':'all-closed')}catch(e){}}
+function resetDefault(){secs().forEach(d=>{const k=d.getAttribute('data-sec-kind')||'';d.open=['short-strategy','mid-strategy','scenarios'].includes(k)});try{localStorage.removeItem(KEY)}catch(e){}}
 document.getElementById('btn-expand-all')?.addEventListener('click',()=>setAll(true));
 document.getElementById('btn-collapse-all')?.addEventListener('click',()=>setAll(false));
 document.getElementById('btn-reset-collapse')?.addEventListener('click',resetDefault);
-try{const p=localStorage.getItem(KEY);if(p==='all-open')setAll(true);else if(p==='all-closed')setAll(false)}catch(_){}
+try{const p=localStorage.getItem(KEY);if(p==='all-open')setAll(true);else if(p==='all-closed')setAll(false)}catch(e){}
 </script>
 </body></html>`;
 }
