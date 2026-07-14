@@ -19,6 +19,7 @@ export interface SourcedPrice extends SourcedValue<number> {
 /** 指数数据 */
 export interface IndexData {
   price: SourcedPrice;   // 指数点位
+  altPrices?: SourcedPrice[]; // 其他来源报价（交叉验证）
   high?: SourcedValue<number>;
   low?: SourcedValue<number>;
   pe?: SourcedValue<number>;      // 市盈率
@@ -72,7 +73,7 @@ export interface ValidationSource {
   timestamp: string;
 }
 
-export type ValidationConsensus = 'verified' | 'minor_deviation' | 'major_conflict';
+export type ValidationConsensus = 'verified' | 'single_source' | 'minor_deviation' | 'major_conflict';
 
 export interface ValidationResult {
   field: string;

@@ -17,6 +17,7 @@ import { buildLongTermOutlook, formatLongTermOutlookConsole } from '../utils/lon
 import { matchCausalRules, formatCausalChainsConsole, type CausalContext } from '../utils/causal-rules.js';
 import { buildRecentReportsContext } from '../utils/report-history-context.js';
 import { scoreToAdvice, checkConsistency, type PlainAdvice } from '../utils/plain-advice.js';
+import { ScenarioFeaturesRepo } from '../db/scenario-features.js';
 import type { Horizon } from '../types/config.js';
 import type { SnpAnalysisReport } from '../types/analysis.js';
 
@@ -229,48 +230,60 @@ function printReport(
 ): void {
   const { overall, technical, fundamental, sentiment, etf: etfAnalysis, rebuttal, tailRisks } = report;
 
+  // === 1. 标题 ===
   console.log(header('🎯 SnpRush 综合分析报告', formatNow()));
 
+  // === 2. 评分构成（首位，对齐 goldRush）===
+  try {
+    const bd = buildScoreBreakdown(technical, fundamental, sentiment, rebuttal);
+    console.log('\n' + formatScoreBreakdownConsole(bd, '  '));
+  } catch { /* ignore */ }
+
+  // === 3. 宏观阶段 ===
+  if (macroRegime) {
+    console.log(`\n  🌐 宏观阶段: ${formatMacroRegimeLine(macroRegime)}`);
+  }
+
+  // === 4. 因果链 ===
+  if (causalChains.length > 0) {
+    console.log('\n' + formatCausalChainsConsole(causalChains));
+  }
+
+  // === 5. 裁决摘要 ===
+  console.log('\n' + formatJudgeVerdictConsole(judgeVerdict));
+
+  // === 6. 历史相似日 [NEW] ===
+  const similarText = buildSimilarPatternsConsole(report);
+  if (similarText) console.log(similarText);
+
+  // === 7. 长期方向预期 ===
+  if (longTermOutlook) {
+    console.log('\n' + formatLongTermOutlookConsole(longTermOutlook));
+  }
+
+  // === 8. 综合研判（分数 + 建议 + 一致性 + 校准）===
   const scoreDisplay = overall?.score ?? 'N/A';
   console.log(`\n  综合研判: ${directionMark(overall?.direction ?? 'neutral')} ${scoreDisplay}/100`);
   if (overall?.score) {
     console.log(`  ${scoreBar(overall.score)}`);
   }
 
-  // 评分链路展示 — 对齐 goldRush 的透明评分体系
-  try {
-    const bd = buildScoreBreakdown(technical, fundamental, sentiment, rebuttal);
-    const breakdownStr = formatScoreBreakdownConsole(bd);
-    console.log(`\n${breakdownStr}`);
-  } catch { /* breakdown 展示失败不阻断 */ }
-
-  // 自然语言建议
   if (advice) {
-    console.log(`  💡 ${advice.emoji} ${advice.headline}: ${advice.action}`);
+    console.log(`\n  💡 ${advice.emoji} ${advice.headline}: ${advice.action}`);
   }
+
   // 一致性检查
   if (consistency && consistency.strength !== 'weak') {
-    console.log(`  🔍 维度一致性: ${consistency.consensus === 'bullish' ? '偏多' : consistency.consensus === 'bearish' ? '偏空' : '分歧'} (${consistency.agreedCount}/3 一致)`);
+    console.log(`  📊  📶 维度一致性: ${consistency.consensus === 'bullish' ? '技术面与基本面偏多' : consistency.consensus === 'bearish' ? '技术面与基本面偏空' : '各维度分歧'}`);
     if (consistency.dissenters.length > 0) console.log(`    分歧维度: ${consistency.dissenters.join('、')}`);
   }
 
-  // 宏观阶段
-  if (macroRegime) {
-    console.log(`\n${formatMacroRegimeLine(macroRegime)}`);
+  // 校准上下文（内联，对齐 goldRush）
+  if (overall?.calibration?.historicalAccuracy != null) {
+    console.log(`  📊 校准: ${overall.calibration.scoreRange}区间 5日涨概率${Math.round(overall.calibration.historicalAccuracy * 100)}% (${overall.calibration.systematicBias})`);
   }
 
-  // 因果链
-  const causalText = formatCausalChainsConsole(causalChains);
-  if (causalText) console.log(causalText);
-
-  // 研判裁决
-  console.log(`\n${formatJudgeVerdictConsole(judgeVerdict)}`);
-
-  if (overall?.calibration?.historicalAccuracy !== null && overall?.calibration?.historicalAccuracy !== undefined) {
-    console.log(`  📊 校准参考: ${overall.calibration.scoreRange}区间历史准确率${Math.round(overall.calibration.historicalAccuracy * 100)}% (${overall.calibration.systematicBias})`);
-  }
-
-  // 情景分析
+  // === 9. 情景分析 ===
   console.log(`\n  ⚡ 情景分析`);
   const scenarios = overall?.scenarios;
   if (scenarios) {
@@ -279,14 +292,14 @@ function printReport(
     console.log(`  下行 (${scenarios.downside.probability}%): ${scenarios.downside.description} (触发: ${scenarios.downside.trigger})`);
   }
 
-  // 四维度摘要
+  // === 10. 四维度摘要 ===
   console.log(`\n  📈 四维度摘要`);
   console.log(`  技术面: ${technical.score}/100 ${directionMark(technical.direction)} — ${technical.summary}`);
   console.log(`  基本面: ${fundamental.score}/100 ${directionMark(fundamental.direction)} — ${fundamental.summary}`);
   console.log(`  情绪面: ${sentiment.score}/100 ${directionMark(sentiment.direction)} — ${sentiment.summary}`);
-  console.log(`  ETF/板块: ${etfAnalysis.valuation.level} | 轮动: ${etfAnalysis.sectorRotation.rotationSignal}`);
+  console.log(`  ETF面: 估值${etfAnalysis.valuation.level} | 轮动: ${etfAnalysis.sectorRotation.rotationSignal}`);
 
-  // 反驳摘要
+  // === 11. 强制反驳摘要 ===
   console.log(`\n  🔴 强制反驳摘要`);
   console.log(`  反驳强度: ${rebuttal.rebuttalStrength} | 看空力度: ${rebuttal.bearScore}/100`);
   for (const point of (rebuttal.bearPoints ?? []).slice(0, 3)) {
@@ -296,15 +309,14 @@ function printReport(
     console.log(`  · 看多漏洞: ${vul.vulnerability}`);
   }
   if (rebuttal.adjustedScore) {
-    console.log(`  → 评分从初步${Math.round((technical.score + fundamental.score + sentiment.score) / 3)}分调整为${rebuttal.adjustedScore}分`);
+    console.log(`  → 详见上方「评分构成」明细`);
   }
 
-  // 双轨策略
+  // === 12. 双轨策略 ===
   if (horizon !== 'mid' && overall?.shortTerm) {
     console.log(`\n  ⏱️ 短期策略 (日线级别)`);
     console.log(`  操作: ${overall.shortTerm.action ?? 'N/A'}`);
-    console.log(`  SPX入场: ${overall.shortTerm.spxEntryZone ?? 'N/A'}`);
-    console.log(`  IXIC入场: ${overall.shortTerm.ixicEntryZone ?? 'N/A'}`);
+    console.log(`  入场: ${overall.shortTerm.spxEntryZone ?? 'N/A'}`);
     console.log(`  目标: ${overall.shortTerm.target ?? 'N/A'}`);
     console.log(`  止损: ${overall.shortTerm.stopLoss ?? 'N/A'}`);
     console.log(`  品种: ${overall.shortTerm.recommendedProduct ?? 'N/A'}`);
@@ -317,13 +329,12 @@ function printReport(
     console.log(`  定投: ${mid.investAdvice?.dipInvest === 'increase' ? '加码' : mid.investAdvice?.dipInvest === 'pause' ? '暂停' : '继续'}`);
     console.log(`  仓位: ${mid.investAdvice?.positionAdjust === 'add' ? '加仓' : mid.investAdvice?.positionAdjust === 'reduce' ? '减仓' : '维持'}`);
     console.log(`  配置: ${mid.investAdvice?.recommendedFund ?? 'N/A'}`);
-    console.log(`  SPX: ${mid.keyLevels?.spxSupportZone ?? 'N/A'} ~ ${mid.keyLevels?.spxResistanceZone ?? 'N/A'}`);
-    console.log(`  IXIC: ${mid.keyLevels?.ixicSupportZone ?? 'N/A'} ~ ${mid.keyLevels?.ixicResistanceZone ?? 'N/A'}`);
-    console.log(`  资产配置: ${mid.assetAllocation ?? 'N/A'}`);
+    console.log(`  支撑区: ${mid.keyLevels?.spxSupportZone ?? 'N/A'}`);
+    console.log(`  阻力区: ${mid.keyLevels?.spxResistanceZone ?? 'N/A'}`);
     console.log(`  ⚠️ ${mid.riskWarning ?? 'N/A'}`);
   }
 
-  // 尾部风险
+  // === 13. 尾部风险 ===
   const tailRiskList = tailRisks ?? [];
   if (tailRiskList.length > 0) {
     console.log(`\n  ⚠️ 尾部风险`);
@@ -335,12 +346,35 @@ function printReport(
     console.log(`  综合尾部风险指数: ${((1 - noRisk) * 100).toFixed(1)}%`);
   }
 
-  // 长期方向预期
-  if (longTermOutlook) {
-    console.log(`\n${formatLongTermOutlookConsole(longTermOutlook)}`);
-  }
-
+  // === 14. 分隔线 ===
   console.log(separator('═', 55));
+}
+
+/** 历史相似日 — 从 scenario_features 找最近相似日 */
+function buildSimilarPatternsConsole(report: SnpAnalysisReport): string {
+  try {
+    const db = getDb();
+    const repo = new ScenarioFeaturesRepo(db);
+    const features = repo.getRecent(200);
+    if (features.length < 5) return '';
+    // 简单相似：按 VIX 水平 + 美元方向匹配
+    const currentVix = report.marketData?.vix?.value?.value ?? 20;
+    const currentDxy = (report.marketData?.dollarIndex?.value?.change ?? 0) > 0.3 ? 'up' : (report.marketData?.dollarIndex?.value?.change ?? 0) < -0.3 ? 'down' : 'flat';
+    const scored = features
+      .map(f => ({
+        date: f.date,
+        vixDiff: Math.abs((f.vixLevel ?? 20) - currentVix),
+        dollarMatch: f.dollarDirection === currentDxy ? 0 : 1,
+        score: f.reportId ? (typeof f.reportId === 'string' ? 60 : 0) : 50,
+      }))
+      .sort((a, b) => (a.vixDiff + a.dollarMatch * 5) - (b.vixDiff + b.dollarMatch * 5))
+      .slice(0, 5);
+    const lines: string[] = ['\n  📜 历史相似日（Top 5）'];
+    for (const s of scored) {
+      lines.push(`  · ${s.date} (VIX偏差 ${s.vixDiff.toFixed(1)}, ${s.dollarMatch === 0 ? '美元同向' : '美元异向'})`);
+    }
+    return lines.join('\n');
+  } catch { return ''; }
 }
 
 function renderReportMarkdown(report: SnpAnalysisReport, horizon: Horizon): string {
