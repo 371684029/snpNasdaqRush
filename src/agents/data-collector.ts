@@ -25,14 +25,14 @@ const DATA_COLLECT_PROMPT = `你是美股市场数据采集专家。你的任务
 {
   "timestamp": "数据时间ISO格式",
   "spx": {
-    "price": { "value": 标普500点位, "change": 涨跌幅百分比, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "验证时间" },
+    "price": { "value": 标普500点位, "change": 涨跌幅百分比, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "验证时间", "altPrices": [{"value": 备用点位, "change": 备用涨跌, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间"}] },
     "high": { "value": 日内最高, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" },
     "low": { "value": 日内最低, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" },
     "pe": { "value": 市盈率, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" },
     "dividend": { "value": 股息率, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" }
   },
   "ixic": {
-    "price": { "value": 纳斯达克点位, "change": 涨跌幅百分比, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "验证时间" },
+    "price": { "value": 纳斯达克点位, "change": 涨跌幅百分比, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "验证时间", "altPrices": [{"value": 备用点位, "change": 备用涨跌, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间"}] },
     "high": { "value": 日内最高, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" },
     "low": { "value": 日内最低, "source": "来源名", "sourceGrade": "A/B/C", "verifiedAt": "时间" }
   },

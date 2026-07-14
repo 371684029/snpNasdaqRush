@@ -5,7 +5,11 @@ describe('gradeSource — 来源分级', () => {
   it('权威来源识别为 A 级', () => {
     expect(gradeSource('S&P Global')).toBe('A');
     expect(gradeSource('NASDAQ')).toBe('A');
-    expect(gradeSource('Reuters')).toBe('A');
+    expect(gradeSource('Federal Reserve')).toBe('A');
+  });
+
+  it('未知来源默认 B 级（对齐 goldRush）', () => {
+    expect(gradeSource('某不知名博客')).toBe('B');
   });
 
   it('可信财经媒体识别为 B 级', () => {
@@ -13,9 +17,6 @@ describe('gradeSource — 来源分级', () => {
     expect(gradeSource('Yahoo Finance')).toBe('B');
   });
 
-  it('未知来源默认 C 级', () => {
-    expect(gradeSource('某不知名博客')).toBe('C');
-  });
 });
 
 describe('checkFreshness — 时效性与非法时间戳防御', () => {
