@@ -8,6 +8,7 @@ import { etfCommand } from './commands/etf.js';
 import { calibrateCommand } from './commands/calibrate.js';
 import { snapshotCommand, initHistoryCommand } from './commands/snapshot.js';
 import { historyCommand } from './commands/history.js';
+import { quantCommand } from './commands/quant.js';
 import { closeDb } from './db/index.js';
 import { loadConfig } from './utils/config.js';
 
@@ -73,6 +74,19 @@ program
   .action(async () => {
     try {
       await etfCommand();
+    } finally {
+      closeDb();
+    }
+  });
+
+// P1: 纯本地量化评分（零 LLM）
+program
+  .command('quant')
+  .description('纯本地量化评分（零 LLM）+ 与最新 LLM 研判的双打分对照')
+  .option('--days <n>', '取用历史天数', '120')
+  .action(async (opts) => {
+    try {
+      await quantCommand(parseInt(opts.days, 10) || 120);
     } finally {
       closeDb();
     }
