@@ -16,8 +16,13 @@ Non-obvious caveats for this environment:
   (prints a "数据采集失败" notice), `analysis`/`etf` error out. To exercise these, set
   `OPENCODE_SERVER` (e.g. in `.env`) to a reachable opencode server. `TAVILY_API_KEY` is
   optional (DuckDuckGo fallback per README).
-- LLM-free commands that run fully offline: `history` (reads SQLite), and `calibrate` (reads
-  archived reports). These auto-create `data/snprush.db` on first run.
+- LLM-free commands that run fully offline: `history` (reads SQLite), `calibrate` (reads
+  archived reports), and `quant` (pure-local量化评分引擎, zero LLM — needs ≥20 days of
+  `index_prices`; also prints a dual-score vs the latest stored LLM report). These auto-create
+  `data/snprush.db` on first run.
+- The Web dashboard's 量化评分 card reuses the compiled quant engine via dynamic `import()` of
+  `dist/`, so it only appears after `npm run build`; without `dist/` the dashboard still renders
+  (the quant card is simply omitted). The `quant` CLI command needs the build too (`dist/`).
 - Report viewer: `node server.cjs` is a standalone dashboard (Hero + 概览 pills + 指数卡/SVG
   sparkline + 报告列表) that reads `docs/*.md` and **read-only** opens the SQLite at
   `data/snprush.db` (gracefully degrades to a reports-only view if the DB is missing/empty).
