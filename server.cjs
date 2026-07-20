@@ -42,15 +42,22 @@ function loadDashboardData() {
       'SELECT date, overall_score AS score, direction FROM analysis_reports ORDER BY date DESC, id DESC LIMIT 1',
     ).get();
 
-    // 最近 30 日行情（升序），用于点位/涨跌幅/迷你走势图
+    // 最近 30 日行情（升序），用于点位/涨跌幅/迷你走势图/量化评分
     const rows = db.prepare(
-      `SELECT date, spx_close, ixic_close, vix, us10y_yield, spx_pe
+      `SELECT date, spx_close, ixic_close, vix, dollar_index, us10y_yield, us2y_yield, spx_pe
        FROM index_prices ORDER BY date DESC LIMIT 30`,
     ).all().reverse();
 
     const latestDate = rows.length ? rows[rows.length - 1].date : (latestReport ? latestReport.date : null);
 
     const series = (key) => rows.map(r => r[key]).filter(v => v != null);
+    const quantSeries = {
+      closes: series('spx_close'),
+      vix: series('vix'),
+      dxy: series('dollar_index'),
+      us10y: series('us10y_yield'),
+      us2y: series('us2y_yield'),
+    };
     const buildIndex = (cfg) => {
       const trend = series(cfg.key);
       if (trend.length === 0) return null;
@@ -68,10 +75,37 @@ function loadDashboardData() {
     ].filter(Boolean);
 
     db.close();
-    return { available: true, reportCount, priceCount, latestReport, latestDate, indices };
+    return { available: true, reportCount, priceCount, latestReport, latestDate, indices, quantSeries };
   } catch {
     try { db.close(); } catch { /* noop */ }
     return { available: false };
+  }
+}
+
+/**
+ * 量化评分视图：动态导入已构建的 ESM 引擎（`dist/`），复用与 CLI 完全相同的逻辑。
+ * 若未 `npm run build` 或导入失败 → 返回 null，仪表盘优雅降级（不显示量化卡）。
+ */
+async function computeQuantView(data) {
+  if (!data || !data.available || !data.quantSeries) return null;
+  const s = data.quantSeries;
+  if (!s.closes || s.closes.length < 20) return null;
+  try {
+    const { pathToFileURL } = require('node:url');
+    const imp = (rel) => import(pathToFileURL(path.join(__dirname, 'dist', rel)).href);
+    const [quantMod, adviceMod, dualMod] = await Promise.all([
+      imp('indicators/quant-score.js'),
+      imp('utils/plain-advice.js'),
+      imp('utils/dual-score.js'),
+    ]);
+    const quant = quantMod.computeQuantScore({ closes: s.closes, vix: s.vix, dxy: s.dxy, us10y: s.us10y, us2y: s.us2y });
+    const advice = adviceMod.scoreToAdvice(quant.score);
+    let verdict = null;
+    const llm = data.latestReport && data.latestReport.score;
+    if (llm != null && Number.isFinite(llm)) verdict = dualMod.evaluateDualScore(llm, quant.score);
+    return { quant, advice, verdict };
+  } catch {
+    return null;
   }
 }
 
@@ -169,6 +203,17 @@ const STYLE = `
   .tag { font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 8px; }
   .tag--up { color: var(--up); background: rgba(46,194,126,.12); }
   .tag--down { color: var(--down); background: rgba(255,93,108,.12); }
+  .tag--flat { color: var(--ink-soft); background: rgba(138,151,173,.15); }
+  /* Quant score card */
+  .quant-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow); }
+  .quant-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .quant-score { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .quant-score__max { font-size: 16px; color: var(--ink-soft); font-weight: 600; }
+  .quant-advice { flex: 1; min-width: 260px; background: var(--surface-2); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; line-height: 1.6; }
+  .qchips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .qchip { font-size: 12px; color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; }
+  .qchip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .quant-dual { margin-top: 12px; font-size: 12.5px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 10px; }
   .index-card__body { display: flex; align-items: flex-end; justify-content: space-between; margin: 14px 0; gap: 8px; }
   .index-card__point { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .index-card__foot { display: flex; gap: 24px; border-top: 1px dashed var(--line); padding-top: 12px; }
@@ -215,6 +260,29 @@ function renderIndexCard(idx) {
   </article>`;
 }
 
+function renderQuantSection(qv) {
+  if (!qv) return '';
+  const { quant, advice, verdict } = qv;
+  const dm = { bullish: ['📈 偏多', 'up', 'tag--up'], bearish: ['📉 偏空', 'down', 'tag--down'], neutral: ['➡️ 中性', '', 'tag--flat'] };
+  const [dirLabel, cls, tagCls] = dm[quant.direction] || dm.neutral;
+  const chips = Object.values(quant.factors)
+    .map(f => `<span class="qchip">${esc(f.name)} <b>${f.normalizedScore}</b></span>`).join('');
+  const dualLine = verdict && verdict.banners && verdict.banners.length
+    ? `<div class="quant-dual">${esc(verdict.banners[0])}</div>` : '';
+  return `<section class="section">
+    <div class="section__head"><h2 class="section__title">量化评分</h2><span class="section__hint">Quant Score · 纯本地 · 零 LLM</span></div>
+    <div class="quant-card">
+      <div class="quant-top">
+        <div class="quant-score ${cls}">${quant.score}<span class="quant-score__max">/100</span></div>
+        <span class="tag ${tagCls}">${dirLabel}</span>
+        <div class="quant-advice" style="border-left:3px solid ${advice.color}">${advice.emoji} <b>${esc(advice.headline)}</b> — ${esc(advice.action)}</div>
+      </div>
+      <div class="qchips">${chips}</div>
+      ${dualLine}
+    </div>
+  </section>`;
+}
+
 function renderReportCard(f) {
   const stats = fs.statSync(path.join(DOCS_DIR, f));
   const dateStr = stats.mtime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
@@ -230,7 +298,7 @@ function renderReportCard(f) {
   </div>`;
 }
 
-function renderDashboard(files, data) {
+function renderDashboard(files, data, quantView) {
   const d = data || { available: false };
   const latest = d.latestReport;
 
@@ -281,6 +349,7 @@ function renderDashboard(files, data) {
     </div>
   </header>
   <main class="container">
+    ${renderQuantSection(quantView)}
     ${indicesSection}
     <section class="section">
       <div class="section__head"><h2 class="section__title">分析报告</h2><span class="section__hint">Analysis Reports</span></div>
@@ -358,11 +427,12 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/' || url.pathname === '/index.html') {
-    fs.readdir(DOCS_DIR, (err, allFiles) => {
+    fs.readdir(DOCS_DIR, async (err, allFiles) => {
       const mdFiles = err ? [] : allFiles.filter(f => f.endsWith('.md')).sort().reverse();
       const data = loadDashboardData();
+      const quantView = await computeQuantView(data);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(renderDashboard(mdFiles, data));
+      res.end(renderDashboard(mdFiles, data, quantView));
     });
     return;
   }
