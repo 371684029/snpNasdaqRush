@@ -4,6 +4,9 @@
 
 set -e
 
+# cron 环境 PATH 不含 /usr/local/bin，需显式添加
+export PATH="/usr/local/bin:$PATH"
+
 cd "$(dirname "$0")/.."
 PROJECT_DIR="$(pwd)"
 
@@ -21,6 +24,12 @@ AFTER=$(git rev-parse HEAD)
 if [ "$BEFORE" != "$AFTER" ]; then
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] 检测到新代码，重新构建..." >> "$LOG_FILE" 2>&1
   npm run build >> "$LOG_FILE" 2>&1
+else
+  # 即使无新代码，也检查 dist/ 是否过期，确保环境变更后被重新编译
+  if [ ! -f "$PROJECT_DIR/dist/index.js" ] || [ "$PROJECT_DIR/src/index.ts" -nt "$PROJECT_DIR/dist/index.js" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] dist/ 过期，重新构建..." >> "$LOG_FILE" 2>&1
+    npm run build >> "$LOG_FILE" 2>&1
+  fi
 fi
 
 node "$PROJECT_DIR/dist/index.js" analysis --md >> "$LOG_FILE" 2>&1
