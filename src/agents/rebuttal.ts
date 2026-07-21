@@ -2,7 +2,8 @@
 
 import { BaseAgent } from './base.js';
 import { getConfig } from '../utils/config.js';
-import type { RebuttalAnalysis, TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, Direction, RebuttalStrength, BearPoint, BullVulnerability } from '../types/analysis.js';
+import { adjustScoreWithRebuttal } from '../utils/rebuttal-score.js';
+import type { RebuttalAnalysis, TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, RebuttalStrength, BearPoint, BullVulnerability } from '../types/analysis.js';
 import type { EtfAnalysis } from '../types/etf.js';
 import type { MarketData } from '../types/market.js';
 
@@ -88,11 +89,11 @@ export class RebuttalAgent extends BaseAgent {
 - 板块落后: ${etf.sectorRotation.lagging.join(', ')}
 
 ## 市场数据
-- SPX: ${marketData.spx.price?.value} (${marketData.spx.price?.change > 0 ? '+' : ''}${marketData.spx.price?.change}%)
-- IXIC: ${marketData.ixic.price?.value} (${marketData.ixic.price?.change > 0 ? '+' : ''}${marketData.ixic.price?.change}%)
-- VIX: ${marketData.vix.value?.value}
-- 美元指数: ${marketData.dollarIndex.value?.value}
-- 10Y美债: ${marketData.usTreasury.yield10y?.value}%
+- SPX: ${marketData.spx?.price?.value ?? 'N/A'} (${(marketData.spx?.price?.change ?? 0) > 0 ? '+' : ''}${marketData.spx?.price?.change ?? 'N/A'}%)
+- IXIC: ${marketData.ixic?.price?.value ?? 'N/A'} (${(marketData.ixic?.price?.change ?? 0) > 0 ? '+' : ''}${marketData.ixic?.price?.change ?? 'N/A'}%)
+- VIX: ${marketData.vix?.value?.value ?? 'N/A'}
+- 美元指数: ${marketData.dollarIndex?.value?.value ?? 'N/A'}
+- 10Y美债: ${marketData.usTreasury?.yield10y?.value ?? 'N/A'}%
 
 请系统性地反驳上述分析，找出所有被忽略的风险。`;
 
@@ -107,17 +108,18 @@ export class RebuttalAgent extends BaseAgent {
     const rebuttalStrength = determineRebuttalStrength(rawResult);
 
     const initialScore = Math.round((technical.score + fundamental.score + sentiment.score) / 3);
+    // 对齐 apple-gold-rush：向 (100 - bearScore) 靠拢
     const { adjustedScore, netEffect } = adjustScoreWithRebuttal(initialScore, rawResult.bearScore, rebuttalStrength);
 
     return {
       bullScore: 100 - rawResult.bearScore,
       bearScore: rawResult.bearScore,
       rebuttalStrength,
-      bearPoints: rawResult.bearPoints,
-      bullVulnerabilities: rawResult.bullVulnerabilities,
+      bearPoints: rawResult.bearPoints ?? [],
+      bullVulnerabilities: rawResult.bullVulnerabilities ?? [],
       netEffect,
       adjustedScore,
-      tailRisks: rawResult.tailRisks,
+      tailRisks: rawResult.tailRisks ?? [],
     };
   }
 }
@@ -130,37 +132,12 @@ function determineRebuttalStrength(rebuttal: { bearScore: number; bearPoints: Be
   else if (rebuttal.bearScore >= 40) strength += 15;
   else strength += 5;
 
-  const highProbPoints = rebuttal.bearPoints.filter(p => p.probability >= 30);
+  const highProbPoints = (rebuttal.bearPoints ?? []).filter(p => p.probability >= 30);
   strength += Math.min(highProbPoints.length * 10, 30);
 
-  strength += Math.min(rebuttal.bullVulnerabilities.length * 10, 30);
+  strength += Math.min((rebuttal.bullVulnerabilities ?? []).length * 10, 30);
 
   if (strength >= 60) return 'strong';
   if (strength >= 35) return 'moderate';
   return 'weak';
-}
-
-function adjustScoreWithRebuttal(
-  originalScore: number,
-  bearScore: number,
-  rebuttalStrength: RebuttalStrength,
-): { adjustedScore: number; netEffect: RebuttalAnalysis['netEffect'] } {
-  const strengthMultiplier: Record<RebuttalStrength, number> = {
-    weak: 0.10,
-    moderate: 0.20,
-    strong: 0.35,
-  };
-
-  // bearScore 代表纯看空力度 (0-100，越高越空)。
-  // 不论原始评分高低，只要反驳有力度就应下调评分。
-  // 公式：扣减量 = (bearScore / 100) × originalScore × 强度系数
-  // 使得：bearScore=42, original=70, moderate → -5.88 ≈ -6（与设计文档一致）
-  //       bearScore=80, original=70, moderate → -11.2 → 58.8（高空头力度正确下调）
-  const adjustment = -(bearScore / 100) * originalScore * strengthMultiplier[rebuttalStrength];
-  const adjustedScore = Math.max(0, Math.min(100, Math.round(originalScore + adjustment)));
-
-  const absAdjust = Math.abs(adjustment);
-  const netEffect = absAdjust < 1 ? 'unchanged' : absAdjust < 5 ? 'downgraded' : 'significant_downgrade';
-
-  return { adjustedScore, netEffect };
 }

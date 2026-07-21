@@ -6,9 +6,11 @@ import { getDb } from '../db/index.js';
 import { CalibrationRepo } from '../db/calibration.js';
 import { ScenarioFeaturesRepo } from '../db/scenario-features.js';
 import { ReportsRepo } from '../db/reports.js';
+import { resolveOverallScore, enforceOverallScore } from '../utils/overall-score.js';
 import type { TechnicalAnalysis, FundamentalAnalysis, SentimentAnalysis, Direction, ShortTermStrategy, MidTermStrategy, Scenarios, RebuttalAnalysis, SnpAnalysisReport } from '../types/analysis.js';
 import type { MarketData } from '../types/market.js';
 import type { EtfAnalysis } from '../types/etf.js';
+import type { QuantScoreResult } from '../indicators/quant-score.js';
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
 
@@ -85,11 +87,17 @@ export class OrchestratorAgent extends BaseAgent {
     etf: EtfAnalysis,
     rebuttal: RebuttalAnalysis,
     horizon: 'short' | 'mid' | 'all' = 'all',
+    quantScore?: number,
+    quantFactors?: QuantScoreResult['factors'],
   ): Promise<SnpAnalysisReport> {
     const db = getDb();
     const calibrationRepo = new CalibrationRepo(db);
-    const initialScore = rebuttal.adjustedScore ?? Math.round((technical.score + fundamental.score + sentiment.score) / 3);
-    const calibrationContext = calibrationRepo.getCalibrationContext(initialScore);
+    const finalScore = resolveOverallScore(rebuttal, {
+      technical: technical.score,
+      fundamental: fundamental.score,
+      sentiment: sentiment.score,
+    });
+    const calibrationContext = calibrationRepo.getCalibrationContext(finalScore);
 
     try {
       calibrationRepo.backfillPending();
@@ -141,36 +149,46 @@ export class OrchestratorAgent extends BaseAgent {
       required: ['overall'],
     };
 
+    const spxPrice = marketData.spx?.price?.value ?? 'N/A';
+    const spxChg = marketData.spx?.price?.change;
+    const ixicPrice = marketData.ixic?.price?.value ?? 'N/A';
+    const ixicChg = marketData.ixic?.price?.change;
+    const vix = marketData.vix?.value?.value ?? 'N/A';
+    const dxy = marketData.dollarIndex?.value?.value ?? 'N/A';
+    const y10 = marketData.usTreasury?.yield10y?.value ?? 'N/A';
+    const y2 = marketData.usTreasury?.yield2y?.value ?? 'N/A';
+    const bearPoints = rebuttal.bearPoints ?? [];
+
     const prompt = `## 市场数据
-SPX: ${marketData.spx.price.value} (${marketData.spx.price.change > 0 ? '+' : ''}${marketData.spx.price.change}%)
-IXIC: ${marketData.ixic.price.value} (${marketData.ixic.price.change > 0 ? '+' : ''}${marketData.ixic.price.change}%)
-VIX: ${marketData.vix.value.value}
-美元指数: ${marketData.dollarIndex.value.value}
-10Y美债: ${marketData.usTreasury.yield10y.value}%
-2Y美债: ${marketData.usTreasury.yield2y?.value}%
+SPX: ${spxPrice} (${typeof spxChg === 'number' ? (spxChg > 0 ? '+' : '') + spxChg : 'N/A'}%)
+IXIC: ${ixicPrice} (${typeof ixicChg === 'number' ? (ixicChg > 0 ? '+' : '') + ixicChg : 'N/A'}%)
+VIX: ${vix}
+美元指数: ${dxy}
+10Y美债: ${y10}%
+2Y美债: ${y2}%
 
 ## 技术面 (${technical.score}/100 ${technical.direction})
-SPX短期: ${technical.spx.shortTerm.trend}, ${technical.spx.shortTerm.keySignal}
-SPX中长期: ${technical.spx.midTerm.trend}, ${technical.spx.midTerm.keySignal}
-IXIC短期: ${technical.ixic.shortTerm.trend}, ${technical.ixic.shortTerm.keySignal}
-IXIC中长期: ${technical.ixic.midTerm.trend}, ${technical.ixic.midTerm.keySignal}
-相对强弱: ${technical.relativeStrength}
-板块轮动: ${technical.sectorRotation}
+SPX短期: ${technical.spx?.shortTerm?.trend ?? 'N/A'}, ${technical.spx?.shortTerm?.keySignal ?? 'N/A'}
+SPX中长期: ${technical.spx?.midTerm?.trend ?? 'N/A'}, ${technical.spx?.midTerm?.keySignal ?? 'N/A'}
+IXIC短期: ${technical.ixic?.shortTerm?.trend ?? 'N/A'}, ${technical.ixic?.shortTerm?.keySignal ?? 'N/A'}
+IXIC中长期: ${technical.ixic?.midTerm?.trend ?? 'N/A'}, ${technical.ixic?.midTerm?.keySignal ?? 'N/A'}
+相对强弱: ${technical.relativeStrength ?? 'N/A'}
+板块轮动: ${technical.sectorRotation ?? 'N/A'}
 
 ## 基本面 (${fundamental.score}/100 ${fundamental.direction})
-${fundamental.keyPoints.join('; ')}
+${(fundamental.keyPoints ?? []).join('; ') || 'N/A'}
 
 ## 情绪面 (${sentiment.score}/100 ${sentiment.direction})
-${sentiment.keyPoints.join('; ')}
+${(sentiment.keyPoints ?? []).join('; ') || 'N/A'}
 
 ## ETF/板块面
-估值: ${etf.valuation.level}, 板块领涨: ${etf.sectorRotation.leading.join(', ')}
+估值: ${etf.valuation?.level ?? 'N/A'}, 板块领涨: ${(etf.sectorRotation?.leading ?? []).join(', ') || 'N/A'}
 
 ## 反驳分析
 看空力度: ${rebuttal.bearScore}/100 (强度: ${rebuttal.rebuttalStrength})
-看空论据: ${rebuttal.bearPoints.map(p => p.point).join('; ')}
-评分修正: ${rebuttal.adjustedScore ?? '未修正'} (${rebuttal.netEffect})
-
+看空论据: ${bearPoints.map(p => p.point).join('; ') || 'N/A'}
+评分修正: ${rebuttal.adjustedScore ?? '未修正'} (${rebuttal.netEffect ?? 'N/A'})
+${quantScore != null ? `\n## 本地量化分\n量化综合分: ${quantScore}/100（仅供参考，最终综合分以反驳修正为准）\n` : ''}
 ## 历史校准
 ${calibrationText}
 
@@ -189,6 +207,8 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       };
     }>(prompt, schema);
 
+    const enforcedScore = enforceOverallScore(result.overall.score, finalScore);
+
     const report: SnpAnalysisReport = {
       timestamp: new Date().toISOString(),
       marketData,
@@ -204,6 +224,9 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       tailRisks: rebuttal.tailRisks ?? [],
       overall: {
         ...result.overall,
+        score: enforcedScore,
+        quantScore,
+        quantFactors,
         calibration: calibrationContext ?? {
           scoreRange: 'N/A',
           historicalAccuracy: null,
@@ -231,7 +254,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
       });
 
       const featuresRepo = new ScenarioFeaturesRepo(db);
-      const d = report.marketData.dollarIndex.value.change;
+      const d = report.marketData.dollarIndex?.value?.change ?? 0;
       featuresRepo.insert({
         date: report.timestamp.slice(0, 10),
         reportId,
@@ -239,7 +262,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
         dollarMagnitude: Math.abs(d),
         tipsDirection: 'flat',
         tipsMagnitude: 0,
-        vixLevel: report.marketData.vix.value.value,
+        vixLevel: report.marketData.vix?.value?.value ?? 0,
         fedStance: 'neutral',
         momentumDirection: report.overall.direction === 'bullish' ? 'up' : report.overall.direction === 'bearish' ? 'down' : 'flat',
         consecutiveDays: 0,

@@ -4,6 +4,14 @@
 
 面向通过 **SPY / QQQ / VOO 等美股 ETF** 做标普500与纳斯达克中长期配置的个人投资者，同时兼顾短线参考。
 
+分析流水线（`snprush analysis`）已对齐 goldRush 风格增强：
+
+- **Yahoo 锚定**：`^GSPC` / `^IXIC` 日线补齐历史 + 现货锚定交叉校验
+- **数据质量门禁**：绿/黄/红分档，红档关闭加减仓操作建议
+- **双打分**：LLM 综合分 × 本地量化分并存，冲突时操作弃权维持定投
+- **可信度一览卡**：门禁 / 双分 / 维度一致 / 校准样本压成 TL;DR
+- **结构化日报**：`--md` 输出含门禁、双分、仓位、预测对错、情景与尾部风险等分节
+
 > 本项目由 [goldRush](../goldRush)（黄金投资研究 Agent）改造而来，将金价分析框架迁移至美股双指数（SPX + IXIC）+ ETF 配置领域。
 
 ---
@@ -88,7 +96,8 @@ snprush analysis
 | `snprush calibrate` | 回测校准（历史准确率统计） | P1 |
 | `snprush calibrate --days 90` | 回顾 90 天 | P1 |
 | `snprush snapshot` | 手动保存当日数据快照 | P1 |
-| `snprush init-history` | 首次拉取历史数据 | P1 |
+| `snprush init-history` | 首次拉取历史数据（Yahoo，默认 60 天） | P1 |
+| `snprush init-history --days 90` | 拉取指定天数历史 | P1 |
 | `snprush history` | 查看历史指数 | P1 |
 | `snprush history --type reports` | 查看历史分析报告 | P1 |
 
@@ -203,7 +212,7 @@ node server.cjs
 node dist/index.js analysis --md    # 生成 docs/snprush-analysis-YYYY-MM-DD.md
 ```
 
-报告包含完整四维度分析、强制反驳、双轨策略和尾部风险，可直接用于发文章或归档查阅。每次分析也自动存入 SQLite（`analysis_reports` 表），可通过 `history --type reports` 查看。
+报告包含完整四维度分析、强制反驳、双轨策略和尾部风险，并附带**数据质量门禁、双打分、可信度一览、仓位推荐、历史预测对错**等结构化分节，可直接用于发文章或归档查阅。每次分析也自动存入 SQLite（`analysis_reports` 表），可通过 `history --type reports` 查看。
 
 ### 每日定时分析
 
@@ -336,6 +345,9 @@ npm run build
 
 # 类型检查
 npm run lint
+
+# 单元测试
+npm test
 ```
 
 ---

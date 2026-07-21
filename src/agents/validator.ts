@@ -1,8 +1,14 @@
-// 信息验证 Agent — 多源交叉验证 + 来源分级
+// 信息验证 Agent — 多源交叉验证 + 加权置信度 + 跳过缺失价
 
 import { BaseAgent } from './base.js';
 import { getConfig } from '../utils/config.js';
-import { gradeSource, crossValidate, checkFreshness } from '../utils/source-rank.js';
+import {
+  crossValidate,
+  checkFreshness,
+  validationSourcesFromPrices,
+  weightedFieldConfidence,
+} from '../utils/source-rank.js';
+import { isMissingPrice } from '../schemas/market.js';
 import type { MarketData, ValidationResult } from '../types/market.js';
 
 export class ValidatorAgent extends BaseAgent {
@@ -22,65 +28,20 @@ export class ValidatorAgent extends BaseAgent {
   }> {
     const validations: ValidationResult[] = [];
 
-    // 验证 SPX
-    if (data.spx?.price?.value != null) {
-      validations.push(crossValidate('spx.price', [{
-        value: data.spx.price.value,
-        source: data.spx.price.source ?? 'unknown',
-        grade: data.spx.price.sourceGrade ?? 'C',
-        timestamp: data.spx.price.verifiedAt ?? '',
-      }]));
-    }
+    const pushField = (field: string, primary: Parameters<typeof validationSourcesFromPrices>[0]) => {
+      if (isMissingPrice(primary)) return;
+      const sources = validationSourcesFromPrices(primary);
+      if (sources.length === 0) return;
+      validations.push(crossValidate(field, sources));
+    };
 
-    // 验证 IXIC
-    if (data.ixic?.price?.value != null) {
-      validations.push(crossValidate('ixic.price', [{
-        value: data.ixic.price.value,
-        source: data.ixic.price.source ?? 'unknown',
-        grade: data.ixic.price.sourceGrade ?? 'C',
-        timestamp: data.ixic.price.verifiedAt ?? '',
-      }]));
-    }
-
-    // 验证 SPY
-    if (data.spy?.nav?.value != null) {
-      validations.push(crossValidate('spy.nav', [{
-        value: data.spy.nav.value,
-        source: data.spy.nav.source ?? 'unknown',
-        grade: data.spy.nav.sourceGrade ?? 'C',
-        timestamp: data.spy.nav.verifiedAt ?? '',
-      }]));
-    }
-
-    // 验证 QQQ
-    if (data.qqq?.nav?.value != null) {
-      validations.push(crossValidate('qqq.nav', [{
-        value: data.qqq.nav.value,
-        source: data.qqq.nav.source ?? 'unknown',
-        grade: data.qqq.nav.sourceGrade ?? 'C',
-        timestamp: data.qqq.nav.verifiedAt ?? '',
-      }]));
-    }
-
-    // 验证 VIX
-    if (data.vix?.value?.value != null) {
-      validations.push(crossValidate('vix.value', [{
-        value: data.vix.value.value,
-        source: data.vix.value.source ?? 'unknown',
-        grade: data.vix.value.sourceGrade ?? 'C',
-        timestamp: data.vix.value.verifiedAt ?? '',
-      }]));
-    }
-
-    // 验证美元指数
-    if (data.dollarIndex?.value?.value != null) {
-      validations.push(crossValidate('dollarIndex.value', [{
-        value: data.dollarIndex.value.value,
-        source: data.dollarIndex.value.source ?? 'unknown',
-        grade: data.dollarIndex.value.sourceGrade ?? 'C',
-        timestamp: data.dollarIndex.value.verifiedAt ?? '',
-      }]));
-    }
+    pushField('spx.price', data.spx?.price);
+    pushField('ixic.price', data.ixic?.price);
+    pushField('spy.nav', data.spy?.nav);
+    pushField('qqq.nav', data.qqq?.nav);
+    pushField('vix.value', data.vix?.value);
+    pushField('dollarIndex.value', data.dollarIndex?.value);
+    pushField('usTreasury.yield10y', data.usTreasury?.yield10y);
 
     const warnings: string[] = [];
     const freshness = checkFreshness(data.timestamp);
@@ -88,9 +49,11 @@ export class ValidatorAgent extends BaseAgent {
       warnings.push(freshness.warning);
     }
 
-    const overallConfidence = validations.length > 0
-      ? Math.round(validations.reduce((sum, v) => sum + v.confidence, 0) / validations.length)
-      : 50;
+    if (validations.some(v => v.consensus === 'single_source')) {
+      warnings.push('部分字段仅单源交叉');
+    }
+
+    const overallConfidence = weightedFieldConfidence(validations);
 
     return { validations, overallConfidence, warnings };
   }

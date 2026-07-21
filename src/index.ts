@@ -55,12 +55,13 @@ program
       process.exit(1);
     }
     try {
-      await analysisCommand({
+      const code = await analysisCommand({
         horizon,
         json: opts.json ?? false,
         save: opts.save ?? false,
         md: opts.md ?? false,
       });
+      if (code) process.exit(code);
     } finally {
       closeDb();
     }
@@ -109,10 +110,11 @@ program
 
 program
   .command('init-history')
-  .description('首次运行：拉取最近60天历史数据')
-  .action(async () => {
+  .description('首次运行：拉取历史指数数据（Yahoo）')
+  .option('--days <n>', '历史天数', '60')
+  .action(async (opts) => {
     try {
-      await initHistoryCommand();
+      await initHistoryCommand(parseInt(opts.days, 10) || 60);
     } finally {
       closeDb();
     }

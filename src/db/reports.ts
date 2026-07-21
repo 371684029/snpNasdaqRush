@@ -33,10 +33,12 @@ export class ReportsRepo {
   }
 
   getByScoreRange(minScore: number, maxScore: number, days?: number): AnalysisReportRow[] {
+    // 满分 100 归入最高区间：右端闭区间 [min, max]
+    const closedMax = maxScore === 100;
     if (days) {
       const rows = this.db.prepare(`
         SELECT * FROM analysis_reports
-        WHERE overall_score >= ? AND overall_score < ?
+        WHERE overall_score >= ? AND overall_score ${closedMax ? '<=' : '<'} ?
         AND date >= date('now', '-' || ? || ' days')
         ORDER BY date ASC
       `).all(minScore, maxScore, days) as Record<string, unknown>[];
@@ -44,7 +46,7 @@ export class ReportsRepo {
     }
     const rows = this.db.prepare(`
       SELECT * FROM analysis_reports
-      WHERE overall_score >= ? AND overall_score < ?
+      WHERE overall_score >= ? AND overall_score ${closedMax ? '<=' : '<'} ?
       ORDER BY date ASC
     `).all(minScore, maxScore) as Record<string, unknown>[];
     return rows.map(mapRow);
