@@ -95,7 +95,7 @@ ${sentiment.keyPoints.map((kp, i) => `  ${i + 1}. ${kp}`).join('\n')}
 ## 市场数据
 - SPX: ${marketData.spx.price?.value} (${marketData.spx.price?.change > 0 ? '+' : ''}${marketData.spx.price?.change}%)
 - IXIC: ${marketData.ixic.price?.value} (${marketData.ixic.price?.change > 0 ? '+' : ''}${marketData.ixic.price?.change}%)
-- VIX: ${marketData.vix.value?.value}
+- VIX: ${marketData.vix?.value?.value ?? 'N/A'}
 - 美元指数: ${marketData.dollarIndex.value?.value}
 - 10Y美债: ${marketData.usTreasury.yield10y?.value}%
 

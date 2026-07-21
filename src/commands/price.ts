@@ -58,7 +58,7 @@ export async function priceCommand(detail: boolean = false): Promise<void> {
   }
 
   // VIX
-  if (marketData.vix.value?.value) {
+  if (marketData.vix?.value?.value) {
     console.log(`  VIX: ${marketData.vix.value.value.toFixed(2)} ${changeColor(marketData.vix.value.change)}`);
   }
 
