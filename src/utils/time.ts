@@ -2,25 +2,56 @@
 
 import type { TradingTimeInfo, TradingSession } from '../types/market.js';
 
+/** 美东时区日历分量 */
+interface NewYorkParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: number; // 0=周日 ... 6=周六
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/**
+ * 用 Intl 取得给定时刻在 America/New_York 时区下的日历分量。
+ * 不依赖运行机器的本地时区。
+ */
+function getNewYorkParts(now: Date = new Date()): NewYorkParts {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  }).formatToParts(now);
+
+  const get = (type: string): string => parts.find(p => p.type === type)?.value ?? '';
+  let hour = parseInt(get('hour'), 10);
+  if (hour === 24) hour = 0; // 部分运行时把午夜渲染为 24 时
+
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
+    day: parseInt(get('day'), 10),
+    hour,
+    minute: parseInt(get('minute'), 10),
+    weekday: WEEKDAY_INDEX[get('weekday')] ?? 0,
+  };
+}
+
 /**
  * 判断当前是否为美股交易时间
  * 美股：9:30-16:00 ET (常规) / 盘前 4:00-9:30 / 盘后 16:00-20:00
  */
-export function getTradingTime(): TradingTimeInfo {
-  const now = new Date();
-
-  // 转为美东时间 (UTC-5, 夏令时 UTC-4)
-  const etOffset = -5 * 60 * 60 * 1000;
-  const etTime = new Date(now.getTime() + etOffset + now.getTimezoneOffset() * 60 * 1000);
-  // 简单夏令时判断：3月第二个周日~11月第一个周日为夏令时
-  const isEDT = isDaylightTime(etTime);
-  if (isEDT) {
-    etTime.setHours(etTime.getHours() + 1);
-  }
-
-  const day = etTime.getDay(); // 0=周日
-  const hour = etTime.getHours();
-  const minute = etTime.getMinutes();
+export function getTradingTime(now: Date = new Date()): TradingTimeInfo {
+  const { weekday: day, hour, minute } = getNewYorkParts(now);
 
   const isTradingDay = day >= 1 && day <= 5;
 
@@ -30,10 +61,10 @@ export function getTradingTime(): TradingTimeInfo {
   if (!isTradingDay) {
     session = 'closed';
     description = day === 6 ? '周六休市' : '周日休市';
-  } else if ((hour >= 9 && (hour > 9 || minute >= 30)) && hour < 16) {
+  } else if ((hour > 9 || (hour === 9 && minute >= 30)) && hour < 16) {
     session = 'day';
     description = '盘中交易中';
-  } else if (hour >= 4 && hour < 9) {
+  } else if (hour >= 4 && (hour < 9 || (hour === 9 && minute < 30))) {
     session = 'pre_market';
     description = '盘前交易';
   } else if (hour >= 16 && hour < 20) {
@@ -45,31 +76,6 @@ export function getTradingTime(): TradingTimeInfo {
   }
 
   return { session, description, isTradingDay };
-}
-
-/** 简单夏令时判断 */
-function isDaylightTime(date: Date): boolean {
-  const year = date.getFullYear();
-  // 3月第二个周日 2:00 AM
-  const march = new Date(year, 2, 1);
-  const marchSecondSunday = getNthSunday(march, 2);
-  // 11月第一个周日 2:00 AM
-  const nov = new Date(year, 10, 1);
-  const novFirstSunday = getNthSunday(nov, 1);
-
-  return date >= marchSecondSunday && date < novFirstSunday;
-}
-
-function getNthSunday(date: Date, n: number): Date {
-  const day = date.getDay();
-  const diff = day === 0 ? 0 : 7 - day;
-  const firstSunday = new Date(date);
-  firstSunday.setDate(date.getDate() + diff);
-  firstSunday.setHours(2, 0, 0, 0);
-  if (n > 1) {
-    firstSunday.setDate(firstSunday.getDate() + (n - 1) * 7);
-  }
-  return firstSunday;
 }
 
 /** 格式化当前时间 (北京时间) */
@@ -101,9 +107,21 @@ export function formatNowET(): string {
   }).replace(/\//g, '-');
 }
 
-/** 获取今日日期 YYYY-MM-DD (北京时间) */
-export function todayDate(): string {
-  const now = new Date();
-  const cst = new Date(now.getTime() + 8 * 60 * 60 * 1000 + now.getTimezoneOffset() * 60 * 1000);
-  return cst.toISOString().slice(0, 10);
+/**
+ * 获取今日日期 YYYY-MM-DD（按 America/New_York 美股交易日历日）
+ * @param now 可选，便于单测注入
+ */
+export function todayDate(now: Date = new Date()): string {
+  const { year, month, day } = getNewYorkParts(now);
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
+}
+
+/** 日历日加减（按美东日历，dateStr 为 YYYY-MM-DD） */
+export function addCalendarDays(dateStr: string, delta: number): string {
+  // 用正午 ET 避免夏令时边界跳日
+  const base = new Date(`${dateStr}T12:00:00-05:00`);
+  base.setUTCDate(base.getUTCDate() + delta);
+  return todayDate(base);
 }

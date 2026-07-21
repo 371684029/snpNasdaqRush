@@ -189,6 +189,16 @@ export interface SnpAnalysisReport {
     calibration: CalibrationContext;
     shortTerm: ShortTermStrategy;
     midTerm: MidTermStrategy;
+    /** 纯本地量化分（可选，与 LLM 分并存） */
+    quantScore?: number;
+    /** 量化因子明细（可选） */
+    quantFactors?: Record<string, {
+      name: string;
+      rawValue: number;
+      normalizedScore: number;
+      weight: number;
+      contribution: number;
+    }>;
   };
 }
 

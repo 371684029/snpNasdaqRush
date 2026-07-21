@@ -72,7 +72,7 @@ export interface ValidationSource {
   timestamp: string;
 }
 
-export type ValidationConsensus = 'verified' | 'minor_deviation' | 'major_conflict';
+export type ValidationConsensus = 'verified' | 'single_source' | 'minor_deviation' | 'major_conflict';
 
 export interface ValidationResult {
   field: string;
