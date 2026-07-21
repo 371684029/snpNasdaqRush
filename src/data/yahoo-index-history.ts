@@ -9,6 +9,9 @@ interface YahooChartResult {
   indicators?: {
     quote?: Array<{
       close?: Array<number | null>;
+      high?: Array<number | null>;
+      low?: Array<number | null>;
+      volume?: Array<number | null>;
     }>;
   };
 }
@@ -24,6 +27,15 @@ export interface IndexHistoryRow {
   date: string;
   spxClose: number | null;
   ixicClose: number | null;
+}
+
+/** 单标的日线 bar（供 ensure-index-history 补齐） */
+export interface YahooDailyBar {
+  date: string;
+  close: number;
+  high: number | null;
+  low: number | null;
+  volume?: number | null;
 }
 
 /** Yahoo range 参数 */
@@ -114,6 +126,68 @@ export async function fetchYahooIndexDailyCloses(
   }
 
   return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function fetchYahooDailyBarsForSymbol(
+  symbol: string,
+  calendarDays: number,
+  asOf: string = todayDate(),
+): Promise<YahooDailyBar[]> {
+  const range = rangeForDays(calendarDays);
+  const from = addCalendarDays(asOf, -(calendarDays - 1));
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`;
+
+  const res = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(`Yahoo Finance 请求失败 (${symbol}): HTTP ${res.status}`);
+  }
+
+  const body = await res.json() as YahooChartResponse;
+  const err = body.chart?.error?.description;
+  if (err) throw new Error(`Yahoo Finance (${symbol}): ${err}`);
+
+  const result = body.chart?.result?.[0];
+  const timestamps = result?.timestamp ?? [];
+  const quote = result?.indicators?.quote?.[0];
+  const closes = quote?.close ?? [];
+  const highs = quote?.high ?? [];
+  const lows = quote?.low ?? [];
+  const volumes = quote?.volume ?? [];
+
+  const rows: YahooDailyBar[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const close = closes[i];
+    if (close == null || !Number.isFinite(close) || close <= 0) continue;
+    const date = yahooTimestampToDate(timestamps[i]);
+    if (date < from || date > asOf) continue;
+    rows.push({
+      date,
+      close: Math.round(close * 100) / 100,
+      high: highs[i] ?? null,
+      low: lows[i] ?? null,
+      volume: volumes[i] ?? null,
+    });
+  }
+  return rows;
+}
+
+/** ^GSPC 日线历史 */
+export async function fetchYahooSpxHistory(
+  calendarDays: number,
+  asOf: string = todayDate(),
+): Promise<YahooDailyBar[]> {
+  return fetchYahooDailyBarsForSymbol('^GSPC', calendarDays, asOf);
+}
+
+/** ^IXIC 日线历史 */
+export async function fetchYahooIxicHistory(
+  calendarDays: number,
+  asOf: string = todayDate(),
+): Promise<YahooDailyBar[]> {
+  return fetchYahooDailyBarsForSymbol('^IXIC', calendarDays, asOf);
 }
 
 /** 解析 Yahoo JSON（供单测） */

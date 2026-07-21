@@ -1,5 +1,7 @@
-// 自然语言建议 — 评分 → 人话
-// 对齐 goldRush plain-advice.ts
+// 自然语言建议 — 评分 → 人话 + 一致性 + 统一操作出口
+// 保留 main 的 scoreToAdvice；补齐 dual-score / reliability / report-md 所需 API
+
+import type { Direction } from '../types/analysis.js';
 
 export interface PlainAdvice {
   emoji: string;
@@ -19,13 +21,125 @@ export function scoreToAdvice(score: number, direction?: string): PlainAdvice {
   return { emoji: '🔴', label: '偏空', headline: '下行风险大于反弹空间', action: '减仓至 30% 以下；清仓高 beta 品种；等评分回升再入场', color: '#ef4444', level: 0 };
 }
 
+export type AdviceSource = 'data_gate' | 'dual_conflict' | 'position' | 'score';
+
+export interface OperationalAdvice {
+  emoji: string;
+  label: string;
+  headline: string;
+  action: string;
+  source: AdviceSource;
+  color: string;
+  bg: string;
+}
+
+const COLORS: Record<string, { color: string; bg: string }> = {
+  red: { color: '#ef4444', bg: '#ef444418' },
+  orange: { color: '#f97316', bg: '#f9731618' },
+  yellow: { color: '#f59e0b', bg: '#f59e0b18' },
+  green: { color: '#22c55e', bg: '#22c55e18' },
+  blue: { color: '#3b82f6', bg: '#3b82f618' },
+  gray: { color: '#94a3b8', bg: '#33415544' },
+};
+
+export interface ResolveOperationalAdviceInput {
+  llmScore?: number | null;
+  direction?: Direction | null;
+  dataActionable?: boolean | null;
+  dualActionOverride?: { headline: string; action: string } | null;
+  dualPolicy?: string | null;
+  position?: {
+    headline: string;
+    action: string;
+    emoji: string;
+    label: string;
+    tilt?: 'reduce' | 'hold' | 'add';
+    targetPct?: number;
+  } | null;
+}
+
+/**
+ * 统一操作建议出口
+ * 优先级：门禁红档 → 双分冲突 → 仓位推荐 → LLM 分映射
+ */
+export function resolveOperationalAdvice(input: ResolveOperationalAdviceInput): OperationalAdvice | null {
+  if (input.dataActionable === false) {
+    const c = COLORS.red;
+    return {
+      label: '数据不可用',
+      emoji: '🔴',
+      headline: '数据质量不足，暂停依据本报告操作',
+      action: '维持既有定投纪律或观望；修复数据后重新 analysis',
+      source: 'data_gate',
+      color: c.color,
+      bg: c.bg,
+    };
+  }
+
+  const dualHold =
+    input.dualPolicy === 'hold_on_conflict'
+    || (input.dualActionOverride != null && input.dualActionOverride.headline.length > 0);
+  if (dualHold) {
+    const ov = input.dualActionOverride;
+    const c = COLORS.gray;
+    return {
+      label: '双分冲突·弃权',
+      emoji: '⚖️',
+      headline: ov?.headline ?? '双体系不一致，操作弃权',
+      action: ov?.action ?? '维持基础定投（SPY/VOO），按日历执行；待双分同向或校准明确后再加减仓',
+      source: 'dual_conflict',
+      color: c.color,
+      bg: c.bg,
+    };
+  }
+
+  if (input.position?.action) {
+    const p = input.position;
+    const pct = p.targetPct != null ? `（约 ${p.targetPct}%）` : '';
+    const palette = p.tilt === 'reduce' ? 'orange' : p.tilt === 'add' ? 'green' : 'yellow';
+    const c = COLORS[palette];
+    return {
+      label: p.label || '仓位建议',
+      emoji: p.emoji || '📦',
+      headline: p.headline,
+      action: p.action.includes('计划仓') ? p.action : `${p.action}${pct}`,
+      source: 'position',
+      color: c.color,
+      bg: c.bg,
+    };
+  }
+
+  if (input.llmScore == null || !Number.isFinite(input.llmScore)) return null;
+  const base = scoreToAdvice(input.llmScore, input.direction ?? undefined);
+  const palette =
+    input.llmScore <= 30 ? 'red'
+      : input.llmScore <= 45 ? 'orange'
+        : input.llmScore <= 55 ? 'yellow'
+          : input.llmScore <= 75 ? 'green'
+            : 'blue';
+  const c = COLORS[palette];
+  return {
+    ...base,
+    source: 'score',
+    color: c.color,
+    bg: c.bg,
+  };
+}
+
 export interface ConsistencyCheck {
   consensus: 'bullish' | 'bearish' | 'mixed';
   agreedCount: number;
   dissenters: string[];
   strength: 'strong' | 'moderate' | 'weak';
+  /** dual-score / reliability 兼容字段 */
+  level: 'strong' | 'moderate' | 'weak';
+  agreeCount: number;
+  totalCount: number;
+  consensusDirection: Direction | null;
+  summary: string;
 }
 
+/** 三维一致性（main 既有签名） */
 export function checkConsistency(
   technical: { score: number; direction: string },
   fundamental: { score: number; direction: string },
@@ -61,5 +175,27 @@ export function checkConsistency(
     .filter(d => d.direction !== (consensus === 'bullish' ? 'bullish' : consensus === 'bearish' ? 'bearish' : ''))
     .map(d => d.name);
 
-  return { consensus, agreedCount, dissenters, strength };
+  const consensusDirection: Direction | null =
+    consensus === 'bullish' ? 'bullish' : consensus === 'bearish' ? 'bearish' : null;
+  const summary = consensusDirection
+    ? `${agreedCount}/3 维度一致${consensusDirection === 'bullish' ? '偏多' : '偏空'}${dissenters.length ? `，${dissenters.join('、')}唱反调` : ''}`
+    : '3 维度方向分歧，各执一词';
+
+  return {
+    consensus,
+    agreedCount,
+    dissenters,
+    strength,
+    level: strength,
+    agreeCount: agreedCount || (3 - dissenters.length),
+    totalCount: 3,
+    consensusDirection,
+    summary,
+  };
+}
+
+export function consistencyEmoji(level: ConsistencyCheck['level']): string {
+  if (level === 'strong') return '✅';
+  if (level === 'moderate') return '⚠️';
+  return '🔴';
 }

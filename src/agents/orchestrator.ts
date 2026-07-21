@@ -14,11 +14,14 @@ import { applyCalibrationBias, momentumAdjustScenarios } from '../utils/calibrat
 import { IndexPricesRepo } from '../db/index-prices.js';
 import { computeHistoricalScenarioProbs } from '../utils/scenario-probability.js';
 import { countConsecutiveDirectionDays } from '../utils/consecutive-direction.js';
+import type { QuantScoreResult } from '../indicators/quant-score.js';
 
 export interface OrchestrateContext {
   causalChainsText?: string;
   reportsContext?: string;
   macroRegimeLine?: string;
+  quantScore?: number;
+  quantFactors?: QuantScoreResult['factors'];
 }
 
 const ORCHESTRATOR_PROMPT = `你是美股投资研究综合编排师。你将汇总技术面、基本面、情绪面、ETF/板块面四维度分析，结合反驳分析和校准数据，输出双视角策略报告。
@@ -191,6 +194,7 @@ ${calibrationText}
 ${ctx?.macroRegimeLine ? `## 宏观阶段\n${ctx.macroRegimeLine}\n` : ''}\
 ${ctx?.causalChainsText ? `## 因果链参考\n${ctx.causalChainsText}\n` : ''}\
 ${ctx?.reportsContext ? `## 近期分析趋势\n${ctx.reportsContext}\n` : ''}\
+${ctx?.quantScore != null ? `## 本地量化分\n量化综合分: ${ctx.quantScore}/100（仅供参考，最终综合分以反驳修正为准）\n` : ''}\
 ## 评分规则
 1. 你的自评分仅作参考，会被公式覆盖，无需过度纠结自评分的精确值
 2. 重点放在情景分析质量和操作建议的具体性上
@@ -292,6 +296,7 @@ ${horizon === 'short' ? '仅短期视角' : horizon === 'mid' ? '仅中长期视
           systematicBias: '样本不足',
           sampleSize: 0,
         },
+        ...(ctx?.quantScore != null ? { quantScore: ctx.quantScore, quantFactors: ctx.quantFactors } : {}),
       },
     };
 

@@ -5,8 +5,10 @@ import { getConfig } from '../utils/config.js';
 import { getDb } from '../db/index.js';
 import { IndexPricesRepo } from '../db/index-prices.js';
 import { SearchRouter } from '../data/search-router.js';
+import { fetchSpxLive } from '../data/yahoo-live.js';
+import { archiveSearchRaw, toArchiveEntries } from '../utils/search-raw-archive.js';
 import { todayDate, formatNow } from '../utils/time.js';
-import type { MarketData, SearchResult } from '../types/market.js';
+import type { MarketData } from '../types/market.js';
 
 const DATA_COLLECT_PROMPT = `你是美股市场数据采集专家。你的任务是从搜索结果中提取结构化的标普500和纳斯达克指数数据。
 
@@ -63,6 +65,8 @@ const DATA_COLLECT_PROMPT = `你是美股市场数据采集专家。你的任务
 
 export class DataCollectorAgent extends BaseAgent {
   private searchRouter: SearchRouter;
+  /** Yahoo 锚定 SPX 价，供门禁对比 */
+  lastAnchorSpx: number | null = null;
 
   constructor() {
     const config = getConfig();
@@ -75,6 +79,14 @@ export class DataCollectorAgent extends BaseAgent {
   }
 
   async collectMarketData(): Promise<MarketData> {
+    try {
+      const live = await fetchSpxLive();
+      this.lastAnchorSpx = live?.price ?? null;
+      if (live) console.log(`  ⚓ Yahoo 锚定 SPX=${live.price}`);
+    } catch {
+      this.lastAnchorSpx = null;
+    }
+
     const searches = [
       { query: `S&P 500 SPX index level today ${new Date().getFullYear()}`, dataType: 'spx' },
       { query: `NASDAQ Composite IXIC index today`, dataType: 'ixic' },
@@ -86,6 +98,16 @@ export class DataCollectorAgent extends BaseAgent {
     ];
 
     const searchResults = await this.searchRouter.searchBatch(searches, { numResults: 3 });
+
+    // 搜索原文存档（审计）
+    try {
+      const archiveItems = searches.map(s => ({
+        query: s.query,
+        dataType: s.dataType,
+        results: searchResults.get(s.query) ?? [],
+      }));
+      archiveSearchRaw(toArchiveEntries(archiveItems));
+    } catch { /* 存档失败不阻断 */ }
 
     // 反捏造防线：若所有搜索均无结果，则不应让 LLM 凭空"提取"市场数据，直接中止。
     const totalResults = Array.from(searchResults.values()).reduce((n, arr) => n + arr.length, 0);

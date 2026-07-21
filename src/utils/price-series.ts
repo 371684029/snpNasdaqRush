@@ -3,26 +3,33 @@
 import type { IndexPriceRecord } from '../types/market.js';
 import { deviationFromMA } from '../indicators/index.js';
 
-/** SPX 收盘价 forward-fill，保持与 records 时间序一致 */
-export function forwardFillSpxCloses(records: IndexPriceRecord[]): number[] {
+function validClose(v: number | null | undefined): v is number {
+  return v != null && Number.isFinite(v) && v > 0;
+}
+
+/** 通用收盘价 forward-fill（SPX / IXIC） */
+export function forwardFillCloses(
+  records: IndexPriceRecord[],
+  field: 'spxClose' | 'ixicClose' = 'spxClose',
+): number[] {
   const closes: number[] = [];
   let last: number | null = null;
   for (const r of records) {
-    if (r.spxClose != null) last = r.spxClose;
+    const v = r[field];
+    if (validClose(v)) last = v;
     if (last != null) closes.push(last);
   }
   return closes;
 }
 
+/** SPX 收盘价 forward-fill，保持与 records 时间序一致 */
+export function forwardFillSpxCloses(records: IndexPriceRecord[]): number[] {
+  return forwardFillCloses(records, 'spxClose');
+}
+
 /** IXIC 收盘价 forward-fill，保持与 records 时间序一致 */
 export function forwardFillIxicCloses(records: IndexPriceRecord[]): number[] {
-  const closes: number[] = [];
-  let last: number | null = null;
-  for (const r of records) {
-    if (r.ixicClose != null) last = r.ixicClose;
-    if (last != null) closes.push(last);
-  }
-  return closes;
+  return forwardFillCloses(records, 'ixicClose');
 }
 
 /** 最新收盘价相对 MA 的偏离度（%） */

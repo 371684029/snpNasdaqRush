@@ -4,6 +4,20 @@ import { z } from 'zod';
 import { gradeSource } from '../utils/source-rank.js';
 import type { MarketData, SourceGrade, SourcedPrice, SourcedValue } from '../types/market.js';
 
+/** 有效行情数字：非 null/NaN/Inf，且不为 0（0 视为占位） */
+export function isValidMarketNumber(value: number | null | undefined): boolean {
+  if (value == null || !Number.isFinite(value)) return false;
+  if (value === 0) return false;
+  return true;
+}
+
+/** 占位价：source=N/A 或 value 无效 → 视为缺失 */
+export function isMissingPrice(p: SourcedPrice | SourcedValue<number> | null | undefined): boolean {
+  if (p == null) return true;
+  if (p.source === 'N/A') return true;
+  return !isValidMarketNumber(p.value);
+}
+
 const sourceGradeSchema = z.enum(['A', 'B', 'C']).catch('B' as SourceGrade);
 
 const sourcedPriceInner = z.object({
